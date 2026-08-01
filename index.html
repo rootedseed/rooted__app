@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>$ROOTED — Grow Your Seed</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1710;
+    --panel: #17221a;
+    --panel-border: #2a3a2c;
+    --green: #4caf6b;
+    --green-dark: #2f6b45;
+    --gold: #d9b25c;
+    --text: #eef2ee;
+    --text-dim: #a9b5ac;
+    --danger: #d9705c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #0f1710 0%, #0b120c 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--panel-border);
+    position: sticky;
+    top: 0;
+    background: rgba(15, 23, 16, 0.92);
+    backdrop-filter: blur(6px);
+    z-index: 10;
+  }
+  header h1 {
+    font-size: 22px;
+    margin: 0;
+    letter-spacing: 0.5px;
+  }
+  header h1 span { color: var(--green); }
+  #network-pill {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: #2a3a2c;
+    color: var(--text-dim);
+    margin-left: 10px;
+  }
+  #network-pill.wrong { background: #4a2a2a; color: #e0a1a1; }
+  #network-pill.ok { background: #1e3a26; color: #9fe0b3; }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+  }
+  button:hover:not(:disabled) { opacity: 0.88; }
+  button:active:not(:disabled) { transform: scale(0.98); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary { background: var(--green); color: #08150d; }
+  .btn-gold { background: var(--gold); color: #2a1f05; }
+  .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--panel-border); }
+  .btn-small { padding: 6px 12px; font-size: 12px; }
+  main {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
+  section { margin-bottom: 42px; }
+  h2 {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--panel-border);
+    padding-bottom: 8px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 22px;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+  }
+  .stat-box {
+    background: #101a12;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .stat-box .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-box .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 8px 10px; font-size: 13px; }
+  th { color: var(--text-dim); font-weight: 600; border-bottom: 1px solid var(--panel-border); }
+  tr:not(:last-child) td { border-bottom: 1px solid #1e2a20; }
+  .tier-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #24331f;
+    color: var(--green);
+  }
+  .mint-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .qty-control { display: flex; align-items: center; gap: 8px; background: #101a12; border: 1px solid var(--panel-border); border-radius: 8px; padding: 4px; }
+  .qty-control button { padding: 4px 10px; background: #1c2a1e; color: var(--text); }
+  .qty-control input {
+    width: 50px; text-align: center; background: transparent; border: none; color: var(--text); font-size: 15px;
+  }
+  #mint-cost { color: var(--text-dim); font-size: 13px; }
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .seed-card {
+    background: #101a12;
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .seed-card .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .seed-card .token-id { font-size: 12px; color: var(--text-dim); }
+  .seed-card .stage { font-size: 13px; color: var(--text-dim); margin-bottom: 10px; }
+  .seed-card .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .pending-pill {
+    background: #3a331e; color: var(--gold); font-size: 11px; padding: 3px 8px; border-radius: 6px;
+  }
+  #status-log {
+    font-size: 13px; color: var(--text-dim); margin-top: 14px; line-height: 1.6; max-height: 160px; overflow-y: auto;
+  }
+  #status-log a { color: var(--green); }
+  .empty-note { color: var(--text-dim); font-size: 14px; padding: 20px 0; text-align: center; }
+  footer { text-align: center; padding: 30px; color: var(--text-dim); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>$<span>ROOTED</span></h1>
+  <div style="display:flex; align-items:center;">
+    <span id="network-pill">not connected</span>
+    <button id="connect-btn" class="btn-primary" style="margin-left:14px;">Connect Wallet</button>
+  </div>
+</header>
+
+<main>
+
+  <section>
+    <h2>Collection Stats</h2>
+    <div class="panel">
+      <div class="stats-grid">
+        <div class="stat-box"><div class="label">Minted</div><div class="value" id="stat-minted">—</div></div>
+        <div class="stat-box"><div class="label">Total Supply</div><div class="value" id="stat-supply">—</div></div>
+        <div class="stat-box"><div class="label">Mint Price</div><div class="value" id="stat-price">—</div></div>
+        <div class="stat-box"><div class="label">Your $ROOTED</div><div class="value" id="stat-rooted">—</div></div>
+      </div>
+
+      <table id="tier-table">
+        <thead>
+          <tr><th>Tier</th><th>Odds</th><th>Minted / Cap</th><th>Yield</th><th>Max Stage</th></tr>
+        </thead>
+        <tbody id="tier-table-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mint a Seed</h2>
+    <div class="panel">
+      <div class="mint-row">
+        <div class="qty-control">
+          <button id="qty-minus" class="btn-small">−</button>
+          <input id="qty-input" type="number" value="1" min="1" />
+          <button id="qty-plus" class="btn-small">+</button>
+        </div>
+        <button id="mint-btn" class="btn-gold">Mint</button>
+        <span id="mint-cost"></span>
+      </div>
+      <div id="mint-limit-note" class="empty-note" style="display:none; padding:10px 0 0;"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Secondary Price Reporter</h2>
+    <div class="panel">
+      <div class="stats-grid">
+        <div class="stat-box"><div class="label">Reporter Address</div><div class="value" id="pr-reporter" style="font-size:13px;">—</div></div>
+        <div class="stat-box"><div class="label">Allowed Range</div><div class="value" id="pr-bounds" style="font-size:14px;">—</div></div>
+        <div class="stat-box"><div class="label">Report Cooldown</div><div class="value" id="pr-cooldown" style="font-size:15px;">—</div></div>
+        <div class="stat-box"><div class="label">Next Report Allowed</div><div class="value" id="pr-next" style="font-size:12px;">—</div></div>
+      </div>
+      <div id="pr-not-reporter" class="empty-note" style="display:none;">Only the designated price-reporter wallet can submit updates here. This is intentional — it stops anyone else from faking a price and moving the mint price. Connect with that wallet to use this panel.</div>
+      <div id="pr-form" class="mint-row" style="display:none; margin-top:16px;">
+        <input id="pr-price-input" type="number" step="0.0001" min="0" placeholder="Observed price (ETH)"
+          style="background:#101a12; border:1px solid var(--panel-border); border-radius:8px; padding:10px 12px; color:var(--text); width:200px;" />
+        <button id="pr-submit-btn" class="btn-gold">Report Price</button>
+        <span style="color:var(--text-dim); font-size:12px;">Enter what you actually observed on the secondary market — it'll be clamped to the Allowed Range above regardless of what you type.</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Marketplace</h2>
+    <div class="panel">
+      <div class="stats-grid" style="margin-bottom:16px;">
+        <div class="stat-box"><div class="label">Moving Average</div><div class="value" id="mkt-avg" style="font-size:15px;">—</div></div>
+      </div>
+      <div class="mint-row" style="margin-bottom:18px;">
+        <input id="mkt-list-tokenid" type="number" min="1" placeholder="Token ID"
+          style="background:#101a12; border:1px solid var(--panel-border); border-radius:8px; padding:10px 12px; color:var(--text); width:110px;" />
+        <input id="mkt-list-price" type="number" step="0.0001" min="0" placeholder="Price (ETH)"
+          style="background:#101a12; border:1px solid var(--panel-border); border-radius:8px; padding:10px 12px; color:var(--text); width:150px;" />
+        <button id="mkt-list-btn" class="btn-gold">List for Sale</button>
+        <span style="color:var(--text-dim); font-size:12px;">Lists one of your Seeds (approves the marketplace first, if needed).</span>
+      </div>
+      <div class="cards-grid" id="mkt-listings-grid"><div class="empty-note">Loading listings...</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>My Collection</h2>
+    <div class="panel">
+      <div id="collection-loading" class="empty-note">Connect your wallet to see your Seeds.</div>
+      <div class="cards-grid" id="collection-grid"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Activity Log</h2>
+    <div class="panel">
+      <div id="status-log">Nothing yet — connect your wallet to get started.</div>
+    </div>
+  </section>
+
+</main>
+
+<footer>$ROOTED &middot; Base Sepolia testnet build &middot; not affiliated with any exchange</footer>
+
+<script>
+// =====================================================================
+// CONFIG -- everything network/contract-specific lives here. To switch
+// this site from testnet to real Base mainnet once you're ready, change
+// ONLY the values in this block (chainId, rpc, explorer, addresses,
+// deployBlock) -- nothing else in the file needs to change.
+// =====================================================================
+const CONFIG = {
+  chainId: 8453, // Base mainnet. (Base Sepolia testnet was 84532.)
+  chainName: "Base",
+  rpcUrl: "https://mainnet.base.org",
+  explorerUrl: "https://basescan.org",
+  rootedTokenAddress: "0x87605cccb17bc26111059eC9c4d5EC88Fc0B5da6",
+  rootedSeedAddress: "0xadcac294885eb0182BE0148f83bcA3c4Ea16E270",
+  // Block this RootedSeed contract was deployed at -- limits how far back
+  // we scan Transfer events when looking up a wallet's owned tokens, so
+  // this page doesn't get slower and slower forever as the chain grows.
+  // Set a bit earlier than the real deploy block (safe -- just means a
+  // few extra blocks get scanned, never misses real events).
+  deployBlock: 49415000,
+  // SeedMarketplace.sol's deployed address -- set this once you've deployed
+  // it. Leave as-is (a zero address) and the Marketplace section will just
+  // show "not deployed yet" instead of erroring.
+  marketplaceAddress: "0x0000000000000000000000000000000000000000",
+  // Block SeedMarketplace was deployed at -- same reasoning as deployBlock
+  // above, for scanning its Listed/ListingCancelled/Sale events.
+  marketplaceDeployBlock: 44719000
+};
+
+const TIER_NAMES = ["Common","Uncommon","Notable","Rare","Epic","Legendary","Mythic","Genesis"];
+const TIER_PROBABILITY_BPS = [6000, 1974, 948, 552, 276, 130, 100, 20];
+const PATH_NAMES = ["None","Orchard","GenesisPath","Hybrid"];
+const STAGE_NAMES = ["Seed","Sprout","Sapling","Tree","Ancient Tree","Primordial Tree"];
+
+const ROOTED_SEED_ABI = [
+  "function mintPriceWei() view returns (uint256)",
+  "function nextTokenId() view returns (uint256)",
+  "function TOTAL_SUPPLY() view returns (uint256)",
+  "function MAX_MINT_BATCH() view returns (uint256)",
+  "function maxMintsPerWallet() view returns (uint256)",
+  "function mintedByWallet(address) view returns (uint256)",
+  "function mint() payable returns (uint256)",
+  "function mintBatch(uint256 quantity) payable returns (uint256[])",
+  "function seedData(uint256) view returns (uint8 tier, uint8 path, uint256 lastClaimedStage, bool isUltimate, bool commonMatured, uint256 lastMaturityRollCycle, bool pendingReveal, uint256 lastHarvestedStage)",
+  "function currentStage(uint256) view returns (uint256)",
+  "function claimableYield(uint256) view returns (uint256)",
+  "function claimYield(uint256)",
+  "function choosePath(uint256 tokenId, uint8 chosenPath)",
+  "function harvestGenesis(uint256 tokenId) returns (uint256)",
+  "function rollCommonMaturity(uint256 tokenId) returns (uint256)",
+  "function currentGlobalCycle() view returns (uint256)",
+  "function ownerOf(uint256) view returns (address)",
+  "function balanceOf(address) view returns (uint256)",
+  "function tierConfigs(uint256) view returns (uint256 maxSupply, uint256 minted, uint256 speedBps, uint256 startOffset, uint256 maxStage, uint256 yieldBps)",
+  "function renounced() view returns (bool)",
+  "function priceReporter() view returns (address)",
+  "function priceReportBounds() view returns (uint256 minAllowed, uint256 maxAllowed)",
+  "function reportCooldownSeconds() view returns (uint256)",
+  "function lastPriceReportTimestamp() view returns (uint256)",
+  "function reportSecondaryPrice(uint256 observedPriceWeiPerSeed)",
+  "function approve(address to, uint256 tokenId)",
+  "function getApproved(uint256 tokenId) view returns (address)",
+  "function isApprovedForAll(address owner, address operator) view returns (bool)",
+  "function transferFrom(address from, address to, uint256 tokenId)",
+  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+];
+
+const ROOTED_TOKEN_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)"
+];
+
+const SEED_MARKETPLACE_ABI = [
+  "function listings(uint256) view returns (address seller, uint256 priceWei)",
+  "function listForSale(uint256 tokenId, uint256 priceWei)",
+  "function cancelListing(uint256 tokenId)",
+  "function buy(uint256 tokenId) payable",
+  "function currentMovingAverage() view returns (uint256 averageWei, uint256 salesConsidered)",
+  "event Listed(uint256 indexed tokenId, address indexed seller, uint256 priceWei)",
+  "event ListingCancelled(uint256 indexed tokenId, address indexed seller)",
+  "event Sale(uint256 indexed tokenId, address indexed seller, address indexed buyer, uint256 priceWei, uint256 movingAverageWei)"
+];
+
+let provider, signer, userAddress;
+let seedContract, seedContractRead, tokenContract;
+let marketContract, marketContractRead;
+
+function marketplaceConfigured() {
+  return CONFIG.marketplaceAddress && CONFIG.marketplaceAddress !== ethers.ZeroAddress;
+}
+
+function log(msg, txHash) {
+  const el = document.getElementById("status-log");
+  if (el.textContent.startsWith("Nothing yet")) el.innerHTML = "";
+  const time = new Date().toLocaleTimeString();
+  let line = `[${time}] ${msg}`;
+  if (txHash) {
+    line += ` — <a href="${CONFIG.explorerUrl}/tx/${txHash}" target="_blank">view tx</a>`;
+  }
+  const p = document.createElement("div");
+  p.innerHTML = line;
+  el.prepend(p);
+}
+
+async function connectWallet() {
+  if (!window.ethereum) {
+    alert("No wallet found. Install MetaMask or another Ethereum wallet extension.");
+    return;
+  }
+  try {
+    await window.ethereum.request({ method: "eth_requestAccounts" });
+    provider = new ethers.BrowserProvider(window.ethereum);
+    signer = await provider.getSigner();
+    userAddress = await signer.getAddress();
+
+    const network = await provider.getNetwork();
+    await checkNetwork(Number(network.chainId));
+
+    seedContract = new ethers.Contract(CONFIG.rootedSeedAddress, ROOTED_SEED_ABI, signer);
+    seedContractRead = seedContract;
+    tokenContract = new ethers.Contract(CONFIG.rootedTokenAddress, ROOTED_TOKEN_ABI, provider);
+    if (marketplaceConfigured()) {
+      marketContract = new ethers.Contract(CONFIG.marketplaceAddress, SEED_MARKETPLACE_ABI, signer);
+      marketContractRead = marketContract;
+    }
+
+    document.getElementById("connect-btn").textContent =
+      userAddress.slice(0, 6) + "…" + userAddress.slice(-4);
+    document.getElementById("connect-btn").disabled = true;
+
+    log("Wallet connected: " + userAddress);
+
+    window.ethereum.on("chainChanged", () => window.location.reload());
+    window.ethereum.on("accountsChanged", () => window.location.reload());
+
+    await refreshAll();
+  } catch (err) {
+    console.error(err);
+    log("Connection failed: " + (err.message || err));
+  }
+}
+
+async function checkNetwork(currentChainId) {
+  const pill = document.getElementById("network-pill");
+  if (currentChainId === CONFIG.chainId) {
+    pill.textContent = CONFIG.chainName;
+    pill.className = "ok";
+    return true;
+  }
+  pill.textContent = "wrong network";
+  pill.className = "wrong";
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0x" + CONFIG.chainId.toString(16) }]
+    });
+    return true;
+  } catch (switchErr) {
+    log("Please switch your wallet to " + CONFIG.chainName + " to continue.");
+    return false;
+  }
+}
+
+async function refreshAll() {
+  await Promise.all([loadGlobalStats(), loadMyCollection(), loadPriceReporterPanel(), loadMarketplace()]);
+}
+
+// ---------------------------------------------------------------------
+// Marketplace: same event-scanning approach as My Collection, since a
+// mapping can't be iterated directly on-chain. For every tokenId that ever
+// appears in a Listed event since marketplaceDeployBlock, the authoritative
+// current state is read straight from listings(tokenId) -- if its seller is
+// the zero address, the listing is no longer active (bought or cancelled),
+// so scanning ListingCancelled/Sale events separately isn't even necessary.
+// ---------------------------------------------------------------------
+async function loadMarketplace() {
+  const gridEl = document.getElementById("mkt-listings-grid");
+  if (!marketplaceConfigured()) {
+    gridEl.innerHTML = '<div class="empty-note">Marketplace not deployed yet.</div>';
+    document.getElementById("mkt-avg").textContent = "—";
+    return;
+  }
+  if (!marketContractRead) {
+    marketContractRead = new ethers.Contract(CONFIG.marketplaceAddress, SEED_MARKETPLACE_ABI, seedContractRead.runner);
+  }
+
+  try {
+    const [avg, salesConsidered] = await marketContractRead.currentMovingAverage();
+    document.getElementById("mkt-avg").textContent =
+      salesConsidered > 0n
+        ? ethers.formatEther(avg) + " ETH (based on " + salesConsidered.toString() + " sale" + (salesConsidered === 1n ? "" : "s") + ")"
+        : "No sales yet";
+
+    const filterListed = marketContractRead.filters.Listed();
+    const eventsListed = await marketContractRead.queryFilter(filterListed, CONFIG.marketplaceDeployBlock);
+    const candidateIds = [...new Set(eventsListed.map(e => e.args.tokenId.toString()))];
+
+    const cards = [];
+    for (const id of candidateIds) {
+      const listing = await marketContractRead.listings(id);
+      if (listing.seller === ethers.ZeroAddress) continue; // sold or cancelled since
+      const isMine = userAddress && listing.seller.toLowerCase() === userAddress.toLowerCase();
+      cards.push(`<div class="seed-card">
+        <div class="top-row"><span class="tier-badge">#${id}</span><span class="token-id">${ethers.formatEther(listing.priceWei)} ETH</span></div>
+        <div class="stage">Seller: ${listing.seller.slice(0, 6)}…${listing.seller.slice(-4)}</div>
+        <div class="actions">
+          ${isMine
+            ? `<button class="btn-outline btn-small mkt-cancel" data-id="${id}">Cancel</button>`
+            : `<button class="btn-gold btn-small mkt-buy" data-id="${id}" data-price="${listing.priceWei.toString()}">Buy</button>`}
+        </div>
+      </div>`);
+    }
+
+    gridEl.innerHTML = cards.length ? cards.join("") : '<div class="empty-note">No active listings yet.</div>';
+    attachMarketplaceListeners();
+  } catch (err) {
+    console.error(err);
+    log("Couldn't load marketplace listings: " + (err.message || err));
+  }
+}
+
+function attachMarketplaceListeners() {
+  document.querySelectorAll(".mkt-buy").forEach(btn => {
+    btn.onclick = async () => {
+      if (!marketContract) { alert("Connect your wallet first."); return; }
+      const id = btn.dataset.id, price = btn.dataset.price;
+      btn.disabled = true;
+      try {
+        const tx = await marketContract.buy(id, { value: price });
+        log(`Buying Seed #${id}...`, tx.hash);
+        await tx.wait();
+        log(`Purchase of Seed #${id} confirmed.`);
+        await refreshAll();
+      } catch (err) {
+        log("Purchase failed: " + (err.reason || err.message || err));
+        btn.disabled = false;
+      }
+    };
+  });
+  document.querySelectorAll(".mkt-cancel").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      try {
+        const tx = await marketContract.cancelListing(id);
+        log(`Cancelling listing for Seed #${id}...`, tx.hash);
+        await tx.wait();
+        log(`Listing cancelled for Seed #${id}.`);
+        await loadMarketplace();
+      } catch (err) {
+        log("Cancel failed: " + (err.reason || err.message || err));
+        btn.disabled = false;
+      }
+    };
+  });
+}
+
+document.getElementById("mkt-list-btn").onclick = async () => {
+  if (!seedContract || !marketContract) { alert("Connect your wallet first."); return; }
+  const tokenId = document.getElementById("mkt-list-tokenid").value;
+  const priceEth = document.getElementById("mkt-list-price").value;
+  if (!tokenId || !priceEth || Number(priceEth) <= 0) {
+    alert("Enter a token ID you own and a valid price in ETH.");
+    return;
+  }
+  const btn = document.getElementById("mkt-list-btn");
+  btn.disabled = true;
+  try {
+    const priceWei = ethers.parseEther(priceEth);
+    const [approvedAddr, isAll] = await Promise.all([
+      seedContractRead.getApproved(tokenId),
+      seedContractRead.isApprovedForAll(userAddress, CONFIG.marketplaceAddress)
+    ]);
+    if (approvedAddr.toLowerCase() !== CONFIG.marketplaceAddress.toLowerCase() && !isAll) {
+      const approveTx = await seedContract.approve(CONFIG.marketplaceAddress, tokenId);
+      log(`Approving marketplace to transfer Seed #${tokenId}...`, approveTx.hash);
+      await approveTx.wait();
+    }
+    const tx = await marketContract.listForSale(tokenId, priceWei);
+    log(`Listing Seed #${tokenId} for ${priceEth} ETH...`, tx.hash);
+    await tx.wait();
+    log(`Seed #${tokenId} listed for sale.`);
+    document.getElementById("mkt-list-tokenid").value = "";
+    document.getElementById("mkt-list-price").value = "";
+    await loadMarketplace();
+  } catch (err) {
+    console.error(err);
+    log("Listing failed: " + (err.reason || err.message || err));
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+function formatDuration(seconds) {
+  if (seconds >= 86400) return (seconds / 86400).toFixed(1) + "d";
+  if (seconds >= 3600) return (seconds / 3600).toFixed(1) + "h";
+  if (seconds >= 60) return (seconds / 60).toFixed(1) + "m";
+  return seconds + "s";
+}
+
+// Reads public reporter/bounds/cooldown state (works even before a wallet is
+// connected, via seedContractRead) and shows the "Report Price" form ONLY
+// when the currently connected wallet IS the on-chain priceReporter address
+// -- reportSecondaryPrice() is gated to that one address on-chain regardless
+// of what this UI shows, so this is a convenience/gating display, not the
+// actual security boundary (that lives in the contract).
+async function loadPriceReporterPanel() {
+  try {
+    const [reporterAddr, bounds, cooldown, lastReport] = await Promise.all([
+      seedContractRead.priceReporter(),
+      seedContractRead.priceReportBounds(),
+      seedContractRead.reportCooldownSeconds(),
+      seedContractRead.lastPriceReportTimestamp()
+    ]);
+
+    document.getElementById("pr-reporter").textContent =
+      reporterAddr === ethers.ZeroAddress ? "Not set" : (reporterAddr.slice(0, 6) + "…" + reporterAddr.slice(-4));
+    document.getElementById("pr-bounds").textContent =
+      ethers.formatEther(bounds.minAllowed) + " – " + ethers.formatEther(bounds.maxAllowed) + " ETH";
+    document.getElementById("pr-cooldown").textContent = formatDuration(Number(cooldown));
+
+    const nextAllowedAt = Number(lastReport) === 0 ? 0 : Number(lastReport) + Number(cooldown);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const canReportNow = nowSec >= nextAllowedAt;
+    document.getElementById("pr-next").textContent =
+      canReportNow ? "Now" : new Date(nextAllowedAt * 1000).toLocaleString();
+
+    const isReporter = !!(userAddress && reporterAddr !== ethers.ZeroAddress &&
+      userAddress.toLowerCase() === reporterAddr.toLowerCase());
+
+    document.getElementById("pr-not-reporter").style.display = isReporter ? "none" : "block";
+    document.getElementById("pr-form").style.display = isReporter ? "flex" : "none";
+
+    if (isReporter) {
+      const submitBtn = document.getElementById("pr-submit-btn");
+      submitBtn.disabled = !canReportNow;
+      submitBtn.textContent = canReportNow ? "Report Price" : "Cooldown active";
+    }
+  } catch (err) {
+    console.error(err);
+    log("Couldn't load price reporter panel: " + (err.message || err));
+  }
+}
+
+document.getElementById("pr-submit-btn").onclick = async () => {
+  if (!seedContract) { alert("Connect your wallet first."); return; }
+  const input = document.getElementById("pr-price-input");
+  const val = input.value;
+  if (!val || Number(val) <= 0) { alert("Enter a valid observed price in ETH."); return; }
+  const btn = document.getElementById("pr-submit-btn");
+  btn.disabled = true;
+  try {
+    const priceWei = ethers.parseEther(val);
+    const tx = await seedContract.reportSecondaryPrice(priceWei);
+    log(`Submitting secondary price report: ${val} ETH...`, tx.hash);
+    await tx.wait();
+    log("Price report confirmed — mint price updated (clamped to the allowed range shown above).");
+    input.value = "";
+    await refreshAll();
+  } catch (err) {
+    console.error(err);
+    log("Price report failed: " + (err.reason || err.message || err));
+    await loadPriceReporterPanel();
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+async function loadGlobalStats() {
+  try {
+    const [priceWei, nextId, totalSupply] = await Promise.all([
+      seedContractRead.mintPriceWei(),
+      seedContractRead.nextTokenId(),
+      seedContractRead.TOTAL_SUPPLY()
+    ]);
+    const minted = nextId - 1n;
+    document.getElementById("stat-minted").textContent = minted.toString();
+    document.getElementById("stat-supply").textContent = totalSupply.toString();
+    document.getElementById("stat-price").textContent = ethers.formatEther(priceWei) + " ETH";
+
+    document.getElementById("qty-input").dataset.priceWei = priceWei.toString();
+    updateMintCost();
+
+    if (userAddress && tokenContract) {
+      const bal = await tokenContract.balanceOf(userAddress);
+      document.getElementById("stat-rooted").textContent =
+        Number(ethers.formatEther(bal)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+
+    if (userAddress) {
+      const [mintedByMe, maxPerWallet] = await Promise.all([
+        seedContractRead.mintedByWallet(userAddress),
+        seedContractRead.maxMintsPerWallet()
+      ]);
+      const noteEl = document.getElementById("mint-limit-note");
+      if (mintedByMe >= maxPerWallet) {
+        noteEl.style.display = "block";
+        noteEl.textContent = `You've reached your per-wallet mint cap (${maxPerWallet.toString()}).`;
+        document.getElementById("mint-btn").disabled = true;
+      } else {
+        noteEl.style.display = "block";
+        noteEl.textContent = `Minted by you: ${mintedByMe.toString()} / ${maxPerWallet.toString()}`;
+        document.getElementById("mint-btn").disabled = false;
+      }
+    }
+
+    // Tier table
+    const rows = await Promise.all(TIER_NAMES.map(async (name, i) => {
+      const cfg = await seedContractRead.tierConfigs(i);
+      const oddsPct = (TIER_PROBABILITY_BPS[i] / 100).toFixed(2) + "%";
+      const yieldX = (Number(cfg.yieldBps) / 10000).toFixed(2) + "x";
+      const maxStageName = STAGE_NAMES[Number(cfg.maxStage)] || "—";
+      return `<tr>
+        <td><span class="tier-badge">${name}</span></td>
+        <td>${oddsPct}</td>
+        <td>${cfg.minted.toString()} / ${cfg.maxSupply.toString()}</td>
+        <td>${name === "Common" ? "0x (unless matured)" : yieldX}</td>
+        <td>${maxStageName}</td>
+      </tr>`;
+    }));
+    document.getElementById("tier-table-body").innerHTML = rows.join("");
+  } catch (err) {
+    console.error(err);
+    log("Couldn't load collection stats: " + (err.message || err));
+  }
+}
+
+function updateMintCost() {
+  const qtyInput = document.getElementById("qty-input");
+  const qty = parseInt(qtyInput.value || "1", 10);
+  const priceWei = qtyInput.dataset.priceWei;
+  const costEl = document.getElementById("mint-cost");
+  if (!priceWei) { costEl.textContent = ""; return; }
+  const total = BigInt(priceWei) * BigInt(qty);
+  costEl.textContent = "Total: " + ethers.formatEther(total) + " ETH";
+}
+
+document.getElementById("qty-minus").onclick = () => {
+  const el = document.getElementById("qty-input");
+  el.value = Math.max(1, parseInt(el.value || "1", 10) - 1);
+  updateMintCost();
+};
+document.getElementById("qty-plus").onclick = () => {
+  const el = document.getElementById("qty-input");
+  el.value = parseInt(el.value || "1", 10) + 1;
+  updateMintCost();
+};
+document.getElementById("qty-input").oninput = updateMintCost;
+
+document.getElementById("mint-btn").onclick = async () => {
+  if (!seedContract) { alert("Connect your wallet first."); return; }
+  const btn = document.getElementById("mint-btn");
+  const qty = parseInt(document.getElementById("qty-input").value || "1", 10);
+  btn.disabled = true;
+  try {
+    const priceWei = await seedContractRead.mintPriceWei();
+    let tx;
+    if (qty === 1) {
+      tx = await seedContract.mint({ value: priceWei });
+    } else {
+      const maxBatch = await seedContractRead.MAX_MINT_BATCH();
+      if (BigInt(qty) > maxBatch) {
+        alert(`Max ${maxBatch.toString()} per transaction.`);
+        btn.disabled = false;
+        return;
+      }
+      tx = await seedContract.mintBatch(qty, { value: priceWei * BigInt(qty) });
+    }
+    log(`Mint transaction submitted for ${qty} Seed(s)...`, tx.hash);
+    await tx.wait();
+    log("Mint confirmed! Your Seed's rarity will reveal shortly once the random number arrives.");
+    await refreshAll();
+  } catch (err) {
+    console.error(err);
+    log("Mint failed: " + (err.reason || err.message || err));
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// ---------------------------------------------------------------------
+// My Collection: standard ERC721 has no on-chain "list all tokens I own"
+// function, so we reconstruct ownership by scanning Transfer events
+// to/from this wallet, then confirming current ownership with ownerOf().
+// Fine at this scale; for a fully mature 80,000-supply collection with
+// heavy trading volume, swap this for a proper indexer (e.g. the Graph,
+// Alchemy NFT API) instead of raw event scanning.
+// ---------------------------------------------------------------------
+async function loadMyCollection() {
+  const loadingEl = document.getElementById("collection-loading");
+  const gridEl = document.getElementById("collection-grid");
+  if (!userAddress) {
+    loadingEl.style.display = "block";
+    loadingEl.textContent = "Connect your wallet to see your Seeds.";
+    gridEl.innerHTML = "";
+    return;
+  }
+  loadingEl.style.display = "block";
+  loadingEl.textContent = "Loading your Seeds...";
+  gridEl.innerHTML = "";
+
+  try {
+    const filterIn = seedContractRead.filters.Transfer(null, userAddress);
+    const filterOut = seedContractRead.filters.Transfer(userAddress, null);
+    const [eventsIn, eventsOut] = await Promise.all([
+      seedContractRead.queryFilter(filterIn, CONFIG.deployBlock),
+      seedContractRead.queryFilter(filterOut, CONFIG.deployBlock)
+    ]);
+
+    const candidateIds = new Set();
+    eventsIn.forEach(e => candidateIds.add(e.args.tokenId.toString()));
+    eventsOut.forEach(e => candidateIds.add(e.args.tokenId.toString()));
+
+    const owned = [];
+    for (const id of candidateIds) {
+      try {
+        const owner = await seedContractRead.ownerOf(id);
+        if (owner.toLowerCase() === userAddress.toLowerCase()) owned.push(id);
+      } catch (e) { /* burned token, skip */ }
+    }
+    owned.sort((a, b) => Number(a) - Number(b));
+
+    if (owned.length === 0) {
+      loadingEl.textContent = "You don't own any Seeds yet — mint one above!";
+      return;
+    }
+    loadingEl.style.display = "none";
+
+    const globalCycle = await seedContractRead.currentGlobalCycle();
+
+    const cards = await Promise.all(owned.map(id => buildSeedCard(id, globalCycle)));
+    gridEl.innerHTML = cards.join("");
+
+    attachCardListeners();
+  } catch (err) {
+    console.error(err);
+    loadingEl.textContent = "Couldn't load your collection: " + (err.message || err);
+  }
+}
+
+async function buildSeedCard(tokenId, globalCycle) {
+  const data = await seedContractRead.seedData(tokenId);
+  const stage = await seedContractRead.currentStage(tokenId);
+  const tierName = TIER_NAMES[Number(data.tier)];
+  const pathName = PATH_NAMES[Number(data.path)];
+  const stageName = STAGE_NAMES[Number(stage)];
+
+  if (data.pendingReveal) {
+    return `<div class="seed-card">
+      <div class="top-row"><span class="tier-badge">Revealing...</span><span class="token-id">#${tokenId}</span></div>
+      <div class="stage">Waiting on Chainlink VRF to assign a tier. Refresh in a bit.</div>
+    </div>`;
+  }
+
+  let actions = "";
+  const isTreeOrAbove = Number(stage) >= 3;
+
+  if (data.path == 0 && isTreeOrAbove) {
+    const hybridDisabled = Number(data.tier) < 5 ? "disabled" : "";
+    actions += `
+      <button class="btn-outline btn-small choose-path" data-id="${tokenId}" data-path="1">Orchard</button>
+      <button class="btn-outline btn-small choose-path" data-id="${tokenId}" data-path="2">GenesisPath</button>
+      <button class="btn-outline btn-small choose-path" data-id="${tokenId}" data-path="3" ${hybridDisabled}>Hybrid</button>
+    `;
+  }
+
+  let yieldLine = "";
+  if (data.path == 1 || data.path == 3) {
+    const claimable = await seedContractRead.claimableYield(tokenId);
+    yieldLine = `<div class="stage">Claimable: ${ethers.formatEther(claimable)} $ROOTED</div>`;
+    actions += `<button class="btn-primary btn-small claim-yield" data-id="${tokenId}" ${claimable > 0n ? "" : "disabled"}>Claim Yield</button>`;
+  }
+
+  if (data.path == 2 || data.path == 3) {
+    const canHarvest = isTreeOrAbove && stage > data.lastHarvestedStage;
+    actions += `<button class="btn-gold btn-small harvest" data-id="${tokenId}" ${canHarvest ? "" : "disabled"}>Harvest</button>`;
+  }
+
+  if (Number(data.tier) === 0 && !data.commonMatured) {
+    const canRoll = globalCycle > data.lastMaturityRollCycle;
+    actions += `<button class="btn-outline btn-small roll-maturity" data-id="${tokenId}" ${canRoll ? "" : "disabled"}>Roll Maturity</button>`;
+  }
+
+  return `<div class="seed-card">
+    <div class="top-row"><span class="tier-badge">${tierName}</span><span class="token-id">#${tokenId}</span></div>
+    <div class="stage">${stageName} &middot; Path: ${pathName}</div>
+    ${yieldLine}
+    <div class="actions">${actions}</div>
+  </div>`;
+}
+
+function attachCardListeners() {
+  document.querySelectorAll(".choose-path").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id, path = btn.dataset.path;
+      btn.disabled = true;
+      try {
+        const tx = await seedContract.choosePath(id, path);
+        log(`Choosing path for Seed #${id}...`, tx.hash);
+        await tx.wait();
+        log(`Path set for Seed #${id}.`);
+        await loadMyCollection();
+      } catch (err) {
+        log("Failed: " + (err.reason || err.message || err));
+        btn.disabled = false;
+      }
+    };
+  });
+  document.querySelectorAll(".claim-yield").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      try {
+        const tx = await seedContract.claimYield(id);
+        log(`Claiming yield for Seed #${id}...`, tx.hash);
+        await tx.wait();
+        log(`Yield claimed for Seed #${id}.`);
+        await refreshAll();
+      } catch (err) {
+        log("Failed: " + (err.reason || err.message || err));
+        btn.disabled = false;
+      }
+    };
+  });
+  document.querySelectorAll(".harvest").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      try {
+        const tx = await seedContract.harvestGenesis(id);
+        log(`Requesting harvest for Seed #${id}...`, tx.hash);
+        await tx.wait();
+        log(`Harvest requested for Seed #${id} — new Seed's tier will reveal shortly via VRF.`);
+        await loadMyCollection();
+      } catch (err) {
+        log("Failed: " + (err.reason || err.message || err));
+        btn.disabled = false;
+      }
+    };
+  });
+  document.querySelectorAll(".roll-maturity").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      try {
+        const tx = await seedContract.rollCommonMaturity(id);
+        log(`Rolling maturity for Seed #${id}...`, tx.hash);
+        await tx.wait();
+        log(`Maturity roll requested for Seed #${id} — result will reveal shortly via VRF.`);
+        await loadMyCollection();
+      } catch (err) {
+        log("Failed: " + (err.reason || err.message || err));
+        btn.disabled = false;
+      }
+    };
+  });
+}
+
+document.getElementById("connect-btn").onclick = connectWallet;
+
+// Load public stats immediately using a read-only provider, even before
+// anyone connects a wallet, so the page isn't blank on first load.
+(async function initReadOnly() {
+  try {
+    if (typeof ethers === "undefined") {
+      log("Failed to load the ethers.js library from the CDN. Check your internet connection, or that nothing (an ad blocker, antivirus, or corporate firewall) is blocking cdnjs.cloudflare.com, then reload this page.");
+      return;
+    }
+    const readProvider = new ethers.JsonRpcProvider(CONFIG.rpcUrl);
+    seedContractRead = new ethers.Contract(CONFIG.rootedSeedAddress, ROOTED_SEED_ABI, readProvider);
+    if (marketplaceConfigured()) {
+      marketContractRead = new ethers.Contract(CONFIG.marketplaceAddress, SEED_MARKETPLACE_ABI, readProvider);
+    }
+    await Promise.all([loadGlobalStats(), loadPriceReporterPanel(), loadMarketplace()]);
+  } catch (err) {
+    console.error(err);
+    log("Startup error: " + (err.message || err) + ". Try opening this file from a local web server (e.g. run \"python -m http.server\" in this folder, then visit http://localhost:8000/rooted-app.html) instead of double-clicking it, since some browsers restrict network requests from file:// pages.");
+  }
+})();
+</script>
+
+</body>
+</html>
