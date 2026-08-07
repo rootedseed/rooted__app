@@ -244,6 +244,14 @@
         <button id="mkt-list-btn" class="btn-gold">List for Sale</button>
         <span style="color:var(--text-dim); font-size:12px;">Lists one of your Seeds (approves the marketplace first, if needed).</span>
       </div>
+      <div class="mint-row" style="margin-bottom:14px;">
+        <label for="mkt-filter-tier" style="color:var(--text-dim); font-size:13px;">Filter:</label>
+        <select id="mkt-filter-tier"
+          style="background:#101a12; border:1px solid var(--panel-border); border-radius:8px; padding:8px 12px; color:var(--text); width:170px;">
+          <option value="">All tiers</option>
+        </select>
+        <span style="color:var(--text-dim); font-size:12px;">Sorted lowest price first; ties go to whoever listed first.</span>
+      </div>
       <div class="cards-grid" id="mkt-listings-grid"><div class="empty-note">Loading listings...</div></div>
     </div>
   </section>
@@ -268,6 +276,9 @@
     <div class="panel">
       <div class="about-sub">What $ROOTED Is</div>
       <p class="about-p">$ROOTED is an ERC-20 token on Base, paired with Seeds — a collectible NFT (ERC-721) you mint, grow, and eventually harvest for $ROOTED rewards. Total Seed supply is fixed at 80,000; the token itself has no admin mint function, so no one can create more $ROOTED out of thin air after launch. Every $ROOTED transfer carries a small tax split between a permanent burn (which shrinks supply) and a treasury, which funds the buyback mechanism below.</p>
+
+      <div class="about-sub">Buying and Selling</div>
+      <p class="about-p">This site has two different things you can trade, and they work in two different places. Seeds (the NFTs) are bought and sold right here, in the Marketplace section above. $ROOTED (the token) is not sold here — it trades on Uniswap, a separate app where people swap one crypto token for another. To buy or sell $ROOTED, go to Uniswap and use the $ROOTED contract address: <code>0x87605cccb17bc26111059eC9c4d5EC88Fc0B5da6</code> on Base.</p>
 
       <div class="about-sub">How Seeds Work</div>
       <p class="about-p">Minting a Seed costs ETH and gives you an NFT with a randomly assigned tier — Common, Uncommon, Notable, Rare, Epic, Legendary, Mythic, or Genesis — decided by Chainlink VRF, a verifiable randomness service that proves on-chain the result wasn't picked or influenced by us. Rarer tiers unlock more $ROOTED yield. Your Seed shows as "Revealing..." until VRF responds — this is usually quick, but VRF runs on its own independent network and its response time isn't something this site (or we) can control, so it can occasionally take longer. Nothing is lost while you wait; just check back and refresh "My Collection" later. Once a Seed matures to Tree stage or beyond, you choose a path: Orchard (steady $ROOTED yield over time), GenesisPath (harvest — spend a mature Seed's growth to mint a brand-new Seed), or Hybrid (both, for high-enough tiers). Common-tier Seeds can also periodically roll a chance to mature further. Each wallet can only mint up to a capped number of Seeds (see "Minted by you" above once connected) rather than an unlimited amount — that's deliberate, so early distribution spreads across more real holders instead of one wallet or bot cornering a large share of the collection.</p>
@@ -487,6 +498,56 @@ async function refreshAll() {
   await Promise.all([loadGlobalStats(), loadMyCollection(), loadPriceReporterPanel(), loadMarketplace()]);
 }
 
+// Populated by loadMarketplace(), re-filtered/re-sorted client-side by
+// renderMarketplaceListings() whenever the tier filter changes -- avoids
+// re-scanning the chain just to change what's displayed.
+let allListings = [];
+
+function populateMarketplaceTierFilter() {
+  const sel = document.getElementById("mkt-filter-tier");
+  if (sel.options.length > 1) return; // already populated, static list
+  TIER_NAMES.forEach((name, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+}
+
+function renderMarketplaceListings() {
+  const gridEl = document.getElementById("mkt-listings-grid");
+  const filterVal = document.getElementById("mkt-filter-tier").value;
+
+  let visible = filterVal === ""
+    ? allListings
+    : allListings.filter(l => String(l.tierIdx) === filterVal);
+
+  // Lowest price first; ties broken by whichever Listed event happened in
+  // an earlier block (and earlier log within the same block) -- i.e.
+  // whoever actually listed first.
+  visible = visible.slice().sort((a, b) => {
+    if (a.priceWei < b.priceWei) return -1;
+    if (a.priceWei > b.priceWei) return 1;
+    if (a.listedBlock !== b.listedBlock) return a.listedBlock - b.listedBlock;
+    return a.listedLogIndex - b.listedLogIndex;
+  });
+
+  const cards = visible.map(l => `<div class="seed-card">
+    <div class="top-row"><span class="tier-badge">${l.tierName} #${l.id}</span><span class="token-id">${ethers.formatEther(l.priceWei)} ETH</span></div>
+    <div class="stage">Seller: ${l.seller.slice(0, 6)}…${l.seller.slice(-4)}</div>
+    <div class="actions">
+      ${l.isMine
+        ? `<button class="btn-outline btn-small mkt-cancel" data-id="${l.id}">Cancel</button>`
+        : `<button class="btn-gold btn-small mkt-buy" data-id="${l.id}" data-price="${l.priceWei.toString()}">Buy</button>`}
+    </div>
+  </div>`);
+
+  gridEl.innerHTML = cards.length ? cards.join("") : '<div class="empty-note">No active listings yet.</div>';
+  attachMarketplaceListeners();
+}
+
+document.getElementById("mkt-filter-tier").addEventListener("change", renderMarketplaceListings);
+
 // ---------------------------------------------------------------------
 // Marketplace: same event-scanning approach as My Collection, since a
 // mapping can't be iterated directly on-chain. For every tokenId that ever
@@ -497,6 +558,7 @@ async function refreshAll() {
 // ---------------------------------------------------------------------
 async function loadMarketplace() {
   const gridEl = document.getElementById("mkt-listings-grid");
+  populateMarketplaceTierFilter();
   if (!marketplaceConfigured()) {
     gridEl.innerHTML = '<div class="empty-note">Marketplace not deployed yet.</div>';
     document.getElementById("mkt-avg").textContent = "—";
@@ -516,26 +578,40 @@ async function loadMarketplace() {
 
       const filterListed = marketContractRead.filters.Listed();
       const eventsListed = await queryFilterChunked(marketContractRead, filterListed, CONFIG.marketplaceDeployBlock);
-      const candidateIds = [...new Set(eventsListed.map(e => e.args.tokenId.toString()))];
 
-      const cards = [];
-      for (const id of candidateIds) {
-        const listing = await marketContractRead.listings(id);
-        if (listing.seller === ethers.ZeroAddress) continue; // sold or cancelled since
-        const isMine = userAddress && listing.seller.toLowerCase() === userAddress.toLowerCase();
-        cards.push(`<div class="seed-card">
-          <div class="top-row"><span class="tier-badge">#${id}</span><span class="token-id">${ethers.formatEther(listing.priceWei)} ETH</span></div>
-          <div class="stage">Seller: ${listing.seller.slice(0, 6)}…${listing.seller.slice(-4)}</div>
-          <div class="actions">
-            ${isMine
-              ? `<button class="btn-outline btn-small mkt-cancel" data-id="${id}">Cancel</button>`
-              : `<button class="btn-gold btn-small mkt-buy" data-id="${id}" data-price="${listing.priceWei.toString()}">Buy</button>`}
-          </div>
-        </div>`);
+      // Keep only the LATEST Listed event per tokenId, since a token can be
+      // listed/cancelled/re-listed -- the latest one is what created
+      // whichever listing is currently active (if any).
+      const latestListedEvent = new Map();
+      for (const e of eventsListed) {
+        const id = e.args.tokenId.toString();
+        const prev = latestListedEvent.get(id);
+        if (!prev || e.blockNumber > prev.blockNumber ||
+            (e.blockNumber === prev.blockNumber && e.logIndex > prev.logIndex)) {
+          latestListedEvent.set(id, e);
+        }
       }
 
-      gridEl.innerHTML = cards.length ? cards.join("") : '<div class="empty-note">No active listings yet.</div>';
-      attachMarketplaceListeners();
+      const results = await Promise.all([...latestListedEvent.entries()].map(async ([id, ev]) => {
+        const [listing, data] = await Promise.all([
+          marketContractRead.listings(id),
+          seedContractRead.seedData(id)
+        ]);
+        if (listing.seller === ethers.ZeroAddress) return null; // sold or cancelled since
+        return {
+          id,
+          seller: listing.seller,
+          priceWei: listing.priceWei,
+          tierIdx: Number(data.tier),
+          tierName: TIER_NAMES[Number(data.tier)],
+          listedBlock: ev.blockNumber,
+          listedLogIndex: ev.logIndex,
+          isMine: userAddress && listing.seller.toLowerCase() === userAddress.toLowerCase()
+        };
+      }));
+
+      allListings = results.filter(Boolean);
+      renderMarketplaceListings();
     });
   } catch (err) {
     console.error(err);
