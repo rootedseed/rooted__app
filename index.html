@@ -497,7 +497,7 @@ async function loadMarketplace() {
         : "No sales yet";
 
     const filterListed = marketContractRead.filters.Listed();
-    const eventsListed = await marketContractRead.queryFilter(filterListed, CONFIG.marketplaceDeployBlock);
+    const eventsListed = await queryFilterChunked(marketContractRead, filterListed, CONFIG.marketplaceDeployBlock);
     const candidateIds = [...new Set(eventsListed.map(e => e.args.tokenId.toString()))];
 
     const cards = [];
@@ -595,6 +595,30 @@ document.getElementById("mkt-list-btn").onclick = async () => {
     btn.disabled = false;
   }
 };
+
+// ---------------------------------------------------------------------
+// Public RPC providers (including Base's own https://mainnet.base.org)
+// commonly cap eth_getLogs at a 10,000-block range per call. Scanning from
+// a fixed deployBlock straight to "latest" works at first, but the range
+// only grows over time -- it WILL exceed that cap eventually even with zero
+// trading activity, just from blocks passing. This chunks any queryFilter
+// call into <=9,500-block windows (comfortably under the 10,000 cap) and
+// stitches the results back together. Chunks are fetched sequentially
+// (not in parallel) deliberately -- firing many chunk requests at once
+// risks tripping the same free RPC's rate limiting that caused the
+// "missing revert data" flakiness seen elsewhere on this page.
+// ---------------------------------------------------------------------
+async function queryFilterChunked(contract, filter, fromBlock, chunkSize = 9500) {
+  const provider = contract.runner.provider ?? contract.runner;
+  const currentBlock = await provider.getBlockNumber();
+  let allEvents = [];
+  for (let start = fromBlock; start <= currentBlock; start += chunkSize) {
+    const end = Math.min(start + chunkSize - 1, currentBlock);
+    const events = await contract.queryFilter(filter, start, end);
+    allEvents = allEvents.concat(events);
+  }
+  return allEvents;
+}
 
 function formatDuration(seconds) {
   if (seconds >= 86400) return (seconds / 86400).toFixed(1) + "d";
@@ -808,8 +832,8 @@ async function loadMyCollection() {
     const filterIn = seedContractRead.filters.Transfer(null, userAddress);
     const filterOut = seedContractRead.filters.Transfer(userAddress, null);
     const [eventsIn, eventsOut] = await Promise.all([
-      seedContractRead.queryFilter(filterIn, CONFIG.deployBlock),
-      seedContractRead.queryFilter(filterOut, CONFIG.deployBlock)
+      queryFilterChunked(seedContractRead, filterIn, CONFIG.deployBlock),
+      queryFilterChunked(seedContractRead, filterOut, CONFIG.deployBlock)
     ]);
 
     const candidateIds = new Set();
