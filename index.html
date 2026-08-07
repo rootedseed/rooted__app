@@ -268,7 +268,7 @@
       <p class="about-p">$ROOTED is an ERC-20 token on Base, paired with Seeds — a collectible NFT (ERC-721) you mint, grow, and eventually harvest for $ROOTED rewards. Total Seed supply is fixed at 80,000; the token itself has no admin mint function, so no one can create more $ROOTED out of thin air after launch. Every $ROOTED transfer carries a small tax split between a permanent burn (which shrinks supply) and a treasury, which funds the buyback mechanism below.</p>
 
       <div class="about-sub">How Seeds Work</div>
-      <p class="about-p">Minting a Seed costs ETH and gives you an NFT with a randomly assigned tier — Common, Uncommon, Notable, Rare, Epic, Legendary, Mythic, or Genesis — decided by Chainlink VRF, a verifiable randomness service that proves on-chain the result wasn't picked or influenced by us. Rarer tiers unlock more $ROOTED yield. Once a Seed matures to Tree stage or beyond, you choose a path: Orchard (steady $ROOTED yield over time), GenesisPath (harvest — spend a mature Seed's growth to mint a brand-new Seed), or Hybrid (both, for high-enough tiers). Common-tier Seeds can also periodically roll a chance to mature further.</p>
+      <p class="about-p">Minting a Seed costs ETH and gives you an NFT with a randomly assigned tier — Common, Uncommon, Notable, Rare, Epic, Legendary, Mythic, or Genesis — decided by Chainlink VRF, a verifiable randomness service that proves on-chain the result wasn't picked or influenced by us. Rarer tiers unlock more $ROOTED yield. Your Seed shows as "Revealing..." until VRF responds — this is usually quick, but VRF runs on its own independent network and its response time isn't something this site (or we) can control, so it can occasionally take longer. Nothing is lost while you wait; just check back and refresh "My Collection" later. Once a Seed matures to Tree stage or beyond, you choose a path: Orchard (steady $ROOTED yield over time), GenesisPath (harvest — spend a mature Seed's growth to mint a brand-new Seed), or Hybrid (both, for high-enough tiers). Common-tier Seeds can also periodically roll a chance to mature further. Each wallet can only mint up to a capped number of Seeds (see "Minted by you" above once connected) rather than an unlimited amount — that's deliberate, so early distribution spreads across more real holders instead of one wallet or bot cornering a large share of the collection.</p>
 
       <div class="about-sub">The Banker</div>
       <p class="about-p">RootedBuyback ("the banker") is a separate contract that buys $ROOTED from the open market using ETH from the treasury tax, then permanently burns whatever it buys. It's permissionless — anyone, not just us, can trigger a buyback — and it enforces its own limits on how much it spends per call and how often, checking the market price against a trusted reference before acting so it can't be tricked into overpaying during a single manipulated trade. Every buyback is logged on-chain as a public event.</p>
@@ -904,7 +904,7 @@ async function buildSeedCard(tokenId, globalCycle) {
   if (data.pendingReveal) {
     return `<div class="seed-card">
       <div class="top-row"><span class="tier-badge">Revealing...</span><span class="token-id">#${tokenId}</span></div>
-      <div class="stage">Waiting on Chainlink VRF to assign a tier. Refresh in a bit.</div>
+      <div class="stage">Waiting on Chainlink VRF to assign a tier — usually quick, but response time isn't something we control and it can occasionally take a while. Nothing is lost; refresh later.</div>
     </div>`;
   }
 
