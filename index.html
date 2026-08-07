@@ -490,34 +490,36 @@ async function loadMarketplace() {
   }
 
   try {
-    const [avg, salesConsidered] = await marketContractRead.currentMovingAverage();
-    document.getElementById("mkt-avg").textContent =
-      salesConsidered > 0n
-        ? ethers.formatEther(avg) + " ETH (based on " + salesConsidered.toString() + " sale" + (salesConsidered === 1n ? "" : "s") + ")"
-        : "No sales yet";
+    await withRetry(async () => {
+      const [avg, salesConsidered] = await marketContractRead.currentMovingAverage();
+      document.getElementById("mkt-avg").textContent =
+        salesConsidered > 0n
+          ? ethers.formatEther(avg) + " ETH (based on " + salesConsidered.toString() + " sale" + (salesConsidered === 1n ? "" : "s") + ")"
+          : "No sales yet";
 
-    const filterListed = marketContractRead.filters.Listed();
-    const eventsListed = await queryFilterChunked(marketContractRead, filterListed, CONFIG.marketplaceDeployBlock);
-    const candidateIds = [...new Set(eventsListed.map(e => e.args.tokenId.toString()))];
+      const filterListed = marketContractRead.filters.Listed();
+      const eventsListed = await queryFilterChunked(marketContractRead, filterListed, CONFIG.marketplaceDeployBlock);
+      const candidateIds = [...new Set(eventsListed.map(e => e.args.tokenId.toString()))];
 
-    const cards = [];
-    for (const id of candidateIds) {
-      const listing = await marketContractRead.listings(id);
-      if (listing.seller === ethers.ZeroAddress) continue; // sold or cancelled since
-      const isMine = userAddress && listing.seller.toLowerCase() === userAddress.toLowerCase();
-      cards.push(`<div class="seed-card">
-        <div class="top-row"><span class="tier-badge">#${id}</span><span class="token-id">${ethers.formatEther(listing.priceWei)} ETH</span></div>
-        <div class="stage">Seller: ${listing.seller.slice(0, 6)}…${listing.seller.slice(-4)}</div>
-        <div class="actions">
-          ${isMine
-            ? `<button class="btn-outline btn-small mkt-cancel" data-id="${id}">Cancel</button>`
-            : `<button class="btn-gold btn-small mkt-buy" data-id="${id}" data-price="${listing.priceWei.toString()}">Buy</button>`}
-        </div>
-      </div>`);
-    }
+      const cards = [];
+      for (const id of candidateIds) {
+        const listing = await marketContractRead.listings(id);
+        if (listing.seller === ethers.ZeroAddress) continue; // sold or cancelled since
+        const isMine = userAddress && listing.seller.toLowerCase() === userAddress.toLowerCase();
+        cards.push(`<div class="seed-card">
+          <div class="top-row"><span class="tier-badge">#${id}</span><span class="token-id">${ethers.formatEther(listing.priceWei)} ETH</span></div>
+          <div class="stage">Seller: ${listing.seller.slice(0, 6)}…${listing.seller.slice(-4)}</div>
+          <div class="actions">
+            ${isMine
+              ? `<button class="btn-outline btn-small mkt-cancel" data-id="${id}">Cancel</button>`
+              : `<button class="btn-gold btn-small mkt-buy" data-id="${id}" data-price="${listing.priceWei.toString()}">Buy</button>`}
+          </div>
+        </div>`);
+      }
 
-    gridEl.innerHTML = cards.length ? cards.join("") : '<div class="empty-note">No active listings yet.</div>';
-    attachMarketplaceListeners();
+      gridEl.innerHTML = cards.length ? cards.join("") : '<div class="empty-note">No active listings yet.</div>';
+      attachMarketplaceListeners();
+    });
   } catch (err) {
     console.error(err);
     log("Couldn't load marketplace listings: " + (err.message || err));
@@ -620,6 +622,27 @@ async function queryFilterChunked(contract, filter, fromBlock, chunkSize = 9500)
   return allEvents;
 }
 
+// ---------------------------------------------------------------------
+// The free public RPC (https://mainnet.base.org) occasionally rejects a
+// burst of concurrent read calls -- this page fires ~15+ of them at once
+// on initial load, before any wallet is connected. Rather than surface a
+// scary-looking error to a first-time visitor over what's usually a
+// transient hiccup, retry a couple times with a short delay before
+// actually giving up and logging it.
+// ---------------------------------------------------------------------
+async function withRetry(fn, retries = 2, delayMs = 900) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastErr;
+}
+
 function formatDuration(seconds) {
   if (seconds >= 86400) return (seconds / 86400).toFixed(1) + "d";
   if (seconds >= 3600) return (seconds / 3600).toFixed(1) + "h";
@@ -635,36 +658,38 @@ function formatDuration(seconds) {
 // actual security boundary (that lives in the contract).
 async function loadPriceReporterPanel() {
   try {
-    const [reporterAddr, bounds, cooldown, lastReport] = await Promise.all([
-      seedContractRead.priceReporter(),
-      seedContractRead.priceReportBounds(),
-      seedContractRead.reportCooldownSeconds(),
-      seedContractRead.lastPriceReportTimestamp()
-    ]);
+    await withRetry(async () => {
+      const [reporterAddr, bounds, cooldown, lastReport] = await Promise.all([
+        seedContractRead.priceReporter(),
+        seedContractRead.priceReportBounds(),
+        seedContractRead.reportCooldownSeconds(),
+        seedContractRead.lastPriceReportTimestamp()
+      ]);
 
-    document.getElementById("pr-reporter").textContent =
-      reporterAddr === ethers.ZeroAddress ? "Not set" : (reporterAddr.slice(0, 6) + "…" + reporterAddr.slice(-4));
-    document.getElementById("pr-bounds").textContent =
-      ethers.formatEther(bounds.minAllowed) + " – " + ethers.formatEther(bounds.maxAllowed) + " ETH";
-    document.getElementById("pr-cooldown").textContent = formatDuration(Number(cooldown));
+      document.getElementById("pr-reporter").textContent =
+        reporterAddr === ethers.ZeroAddress ? "Not set" : (reporterAddr.slice(0, 6) + "…" + reporterAddr.slice(-4));
+      document.getElementById("pr-bounds").textContent =
+        ethers.formatEther(bounds.minAllowed) + " – " + ethers.formatEther(bounds.maxAllowed) + " ETH";
+      document.getElementById("pr-cooldown").textContent = formatDuration(Number(cooldown));
 
-    const nextAllowedAt = Number(lastReport) === 0 ? 0 : Number(lastReport) + Number(cooldown);
-    const nowSec = Math.floor(Date.now() / 1000);
-    const canReportNow = nowSec >= nextAllowedAt;
-    document.getElementById("pr-next").textContent =
-      canReportNow ? "Now" : new Date(nextAllowedAt * 1000).toLocaleString();
+      const nextAllowedAt = Number(lastReport) === 0 ? 0 : Number(lastReport) + Number(cooldown);
+      const nowSec = Math.floor(Date.now() / 1000);
+      const canReportNow = nowSec >= nextAllowedAt;
+      document.getElementById("pr-next").textContent =
+        canReportNow ? "Now" : new Date(nextAllowedAt * 1000).toLocaleString();
 
-    const isReporter = !!(userAddress && reporterAddr !== ethers.ZeroAddress &&
-      userAddress.toLowerCase() === reporterAddr.toLowerCase());
+      const isReporter = !!(userAddress && reporterAddr !== ethers.ZeroAddress &&
+        userAddress.toLowerCase() === reporterAddr.toLowerCase());
 
-    document.getElementById("pr-not-reporter").style.display = isReporter ? "none" : "block";
-    document.getElementById("pr-form").style.display = isReporter ? "flex" : "none";
+      document.getElementById("pr-not-reporter").style.display = isReporter ? "none" : "block";
+      document.getElementById("pr-form").style.display = isReporter ? "flex" : "none";
 
-    if (isReporter) {
-      const submitBtn = document.getElementById("pr-submit-btn");
-      submitBtn.disabled = !canReportNow;
-      submitBtn.textContent = canReportNow ? "Report Price" : "Cooldown active";
-    }
+      if (isReporter) {
+        const submitBtn = document.getElementById("pr-submit-btn");
+        submitBtn.disabled = !canReportNow;
+        submitBtn.textContent = canReportNow ? "Report Price" : "Cooldown active";
+      }
+    });
   } catch (err) {
     console.error(err);
     log("Couldn't load price reporter panel: " + (err.message || err));
@@ -697,57 +722,59 @@ document.getElementById("pr-submit-btn").onclick = async () => {
 
 async function loadGlobalStats() {
   try {
-    const [priceWei, nextId, totalSupply] = await Promise.all([
-      seedContractRead.mintPriceWei(),
-      seedContractRead.nextTokenId(),
-      seedContractRead.TOTAL_SUPPLY()
-    ]);
-    const minted = nextId - 1n;
-    document.getElementById("stat-minted").textContent = minted.toString();
-    document.getElementById("stat-supply").textContent = totalSupply.toString();
-    document.getElementById("stat-price").textContent = ethers.formatEther(priceWei) + " ETH";
-
-    document.getElementById("qty-input").dataset.priceWei = priceWei.toString();
-    updateMintCost();
-
-    if (userAddress && tokenContract) {
-      const bal = await tokenContract.balanceOf(userAddress);
-      document.getElementById("stat-rooted").textContent =
-        Number(ethers.formatEther(bal)).toLocaleString(undefined, { maximumFractionDigits: 2 });
-    }
-
-    if (userAddress) {
-      const [mintedByMe, maxPerWallet] = await Promise.all([
-        seedContractRead.mintedByWallet(userAddress),
-        seedContractRead.maxMintsPerWallet()
+    await withRetry(async () => {
+      const [priceWei, nextId, totalSupply] = await Promise.all([
+        seedContractRead.mintPriceWei(),
+        seedContractRead.nextTokenId(),
+        seedContractRead.TOTAL_SUPPLY()
       ]);
-      const noteEl = document.getElementById("mint-limit-note");
-      if (mintedByMe >= maxPerWallet) {
-        noteEl.style.display = "block";
-        noteEl.textContent = `You've reached your per-wallet mint cap (${maxPerWallet.toString()}).`;
-        document.getElementById("mint-btn").disabled = true;
-      } else {
-        noteEl.style.display = "block";
-        noteEl.textContent = `Minted by you: ${mintedByMe.toString()} / ${maxPerWallet.toString()}`;
-        document.getElementById("mint-btn").disabled = false;
-      }
-    }
+      const minted = nextId - 1n;
+      document.getElementById("stat-minted").textContent = minted.toString();
+      document.getElementById("stat-supply").textContent = totalSupply.toString();
+      document.getElementById("stat-price").textContent = ethers.formatEther(priceWei) + " ETH";
 
-    // Tier table
-    const rows = await Promise.all(TIER_NAMES.map(async (name, i) => {
-      const cfg = await seedContractRead.tierConfigs(i);
-      const oddsPct = (TIER_PROBABILITY_BPS[i] / 100).toFixed(2) + "%";
-      const yieldX = (Number(cfg.yieldBps) / 10000).toFixed(2) + "x";
-      const maxStageName = STAGE_NAMES[Number(cfg.maxStage)] || "—";
-      return `<tr>
-        <td><span class="tier-badge">${name}</span></td>
-        <td>${oddsPct}</td>
-        <td>${cfg.minted.toString()} / ${cfg.maxSupply.toString()}</td>
-        <td>${name === "Common" ? "0x (unless matured)" : yieldX}</td>
-        <td>${maxStageName}</td>
-      </tr>`;
-    }));
-    document.getElementById("tier-table-body").innerHTML = rows.join("");
+      document.getElementById("qty-input").dataset.priceWei = priceWei.toString();
+      updateMintCost();
+
+      if (userAddress && tokenContract) {
+        const bal = await tokenContract.balanceOf(userAddress);
+        document.getElementById("stat-rooted").textContent =
+          Number(ethers.formatEther(bal)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+      }
+
+      if (userAddress) {
+        const [mintedByMe, maxPerWallet] = await Promise.all([
+          seedContractRead.mintedByWallet(userAddress),
+          seedContractRead.maxMintsPerWallet()
+        ]);
+        const noteEl = document.getElementById("mint-limit-note");
+        if (mintedByMe >= maxPerWallet) {
+          noteEl.style.display = "block";
+          noteEl.textContent = `You've reached your per-wallet mint cap (${maxPerWallet.toString()}).`;
+          document.getElementById("mint-btn").disabled = true;
+        } else {
+          noteEl.style.display = "block";
+          noteEl.textContent = `Minted by you: ${mintedByMe.toString()} / ${maxPerWallet.toString()}`;
+          document.getElementById("mint-btn").disabled = false;
+        }
+      }
+
+      // Tier table
+      const rows = await Promise.all(TIER_NAMES.map(async (name, i) => {
+        const cfg = await seedContractRead.tierConfigs(i);
+        const oddsPct = (TIER_PROBABILITY_BPS[i] / 100).toFixed(2) + "%";
+        const yieldX = (Number(cfg.yieldBps) / 10000).toFixed(2) + "x";
+        const maxStageName = STAGE_NAMES[Number(cfg.maxStage)] || "—";
+        return `<tr>
+          <td><span class="tier-badge">${name}</span></td>
+          <td>${oddsPct}</td>
+          <td>${cfg.minted.toString()} / ${cfg.maxSupply.toString()}</td>
+          <td>${name === "Common" ? "0x (unless matured)" : yieldX}</td>
+          <td>${maxStageName}</td>
+        </tr>`;
+      }));
+      document.getElementById("tier-table-body").innerHTML = rows.join("");
+    });
   } catch (err) {
     console.error(err);
     log("Couldn't load collection stats: " + (err.message || err));
