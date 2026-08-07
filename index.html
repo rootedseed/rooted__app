@@ -235,8 +235,10 @@
         <div class="stat-box"><div class="label">Moving Average</div><div class="value" id="mkt-avg" style="font-size:15px;">—</div></div>
       </div>
       <div class="mint-row" style="margin-bottom:18px;">
-        <input id="mkt-list-tokenid" type="number" min="1" placeholder="Token ID"
-          style="background:#101a12; border:1px solid var(--panel-border); border-radius:8px; padding:10px 12px; color:var(--text); width:110px;" />
+        <select id="mkt-list-tokenid"
+          style="background:#101a12; border:1px solid var(--panel-border); border-radius:8px; padding:10px 12px; color:var(--text); width:190px;">
+          <option value="">Select a Seed...</option>
+        </select>
         <input id="mkt-list-price" type="number" step="0.0001" min="0" placeholder="Price (ETH)"
           style="background:#101a12; border:1px solid var(--panel-border); border-radius:8px; padding:10px 12px; color:var(--text); width:150px;" />
         <button id="mkt-list-btn" class="btn-gold">List for Sale</button>
@@ -389,6 +391,21 @@ const SEED_MARKETPLACE_ABI = [
 let provider, signer, userAddress;
 let seedContract, seedContractRead, tokenContract;
 let marketContract, marketContractRead;
+// Populated by loadMyCollection() (skips pendingReveal Seeds, since an
+// unrevealed tier can't meaningfully be listed) -- drives the "List for
+// Sale" dropdown so people pick from their actual Seeds instead of typing
+// a raw token ID.
+let myOwnedTokens = [];
+
+function populateListingDropdown() {
+  const sel = document.getElementById("mkt-list-tokenid");
+  const prevValue = sel.value;
+  const options = ['<option value="">Select a Seed...</option>'].concat(
+    myOwnedTokens.map(t => `<option value="${t.id}">#${t.id} — ${t.tierName}</option>`)
+  );
+  sel.innerHTML = options.join("");
+  if (myOwnedTokens.some(t => t.id === prevValue)) sel.value = prevValue;
+}
 
 function marketplaceConfigured() {
   return CONFIG.marketplaceAddress && CONFIG.marketplaceAddress !== ethers.ZeroAddress;
@@ -587,9 +604,8 @@ document.getElementById("mkt-list-btn").onclick = async () => {
     log(`Listing Seed #${tokenId} for ${priceEth} ETH...`, tx.hash);
     await tx.wait();
     log(`Seed #${tokenId} listed for sale.`);
-    document.getElementById("mkt-list-tokenid").value = "";
     document.getElementById("mkt-list-price").value = "";
-    await loadMarketplace();
+    await Promise.all([loadMarketplace(), loadMyCollection()]);
   } catch (err) {
     console.error(err);
     log("Listing failed: " + (err.reason || err.message || err));
@@ -876,8 +892,10 @@ async function loadMyCollection() {
     }
     owned.sort((a, b) => Number(a) - Number(b));
 
+    myOwnedTokens = [];
     if (owned.length === 0) {
       loadingEl.textContent = "You don't own any Seeds yet — mint one above!";
+      populateListingDropdown();
       return;
     }
     loadingEl.style.display = "none";
@@ -888,6 +906,7 @@ async function loadMyCollection() {
     gridEl.innerHTML = cards.join("");
 
     attachCardListeners();
+    populateListingDropdown();
   } catch (err) {
     console.error(err);
     loadingEl.textContent = "Couldn't load your collection: " + (err.message || err);
@@ -907,6 +926,11 @@ async function buildSeedCard(tokenId, globalCycle) {
       <div class="stage">Waiting on Chainlink VRF to assign a tier — usually quick, but response time isn't something we control and it can occasionally take a while. Nothing is lost; refresh later.</div>
     </div>`;
   }
+
+  // Record for the Marketplace "List for Sale" dropdown -- only reachable
+  // once a tier's actually revealed, so buyers always see what they're
+  // bidding on.
+  myOwnedTokens.push({ id: tokenId, tierName });
 
   let actions = "";
   const isTreeOrAbove = Number(stage) >= 3;
