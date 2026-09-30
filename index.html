@@ -147,6 +147,15 @@
   }
   #status-log a { color: var(--green); }
   .empty-note { color: var(--text-dim); font-size: 14px; padding: 20px 0; text-align: center; }
+  .panel-note { font-size: 13px; line-height: 1.6; color: var(--text-dim); margin: 14px 0 0; }
+  .panel-note a { color: var(--green); }
+  .warn-note {
+    background: #3a331e; color: var(--gold); border: 1px solid #5a4a22; border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; line-height: 1.5; margin-top: 12px;
+  }
+  .stat-box .value.status-ok { color: var(--green); }
+  .stat-box .value.status-warn { color: var(--gold); }
+  .stat-box .value.status-bad { color: var(--danger); }
   .about-sub { font-size: 14px; font-weight: 700; color: var(--green); margin: 22px 0 8px; }
   .about-sub:first-child { margin-top: 0; }
   .about-p { font-size: 14px; line-height: 1.7; color: var(--text-dim); margin: 0 0 10px; }
@@ -206,6 +215,21 @@
         <span id="mint-cost"></span>
       </div>
       <div id="mint-limit-note" class="empty-note" style="display:none; padding:10px 0 0;"></div>
+      <div id="vrf-mint-warning" class="warn-note" style="display:none;">Heads up: the Randomness Fund is low right now. You can still mint, but your Seed's reveal may wait until the fund is refilled. Refilling happens automatically.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Randomness Fund</h2>
+    <div class="panel">
+      <div class="stats-grid">
+        <div class="stat-box"><div class="label">LINK in Fund</div><div class="value" id="vrf-link" style="font-size:15px;">—</div></div>
+        <div class="stat-box"><div class="label">Reveals It Can Handle at Once</div><div class="value" id="vrf-capacity">—</div></div>
+        <div class="stat-box"><div class="label">Reveals Served</div><div class="value" id="vrf-served">—</div></div>
+        <div class="stat-box"><div class="label">Status</div><div class="value" id="vrf-status" style="font-size:15px;">—</div></div>
+      </div>
+      <p class="panel-note">Each Seed's tier is picked by Chainlink VRF, which is paid in LINK from this fund. The fund is topped up automatically by the ROOTED keeper, so nobody has to remember to refill it. <a id="vrf-sub-link" href="https://vrf.chain.link/base" target="_blank" rel="noopener">See the fund on Chainlink</a></p>
+      <p id="vrf-sweep-note" class="panel-note" style="display:none;"></p>
     </div>
   </section>
 
@@ -224,6 +248,24 @@
           style="background:#101a12; border:1px solid var(--panel-border); border-radius:8px; padding:10px 12px; color:var(--text); width:200px;" />
         <button id="pr-submit-btn" class="btn-gold">Report Price</button>
         <span style="color:var(--text-dim); font-size:12px;">Enter what you actually observed on the secondary market — it'll be clamped to the Allowed Range above regardless of what you type.</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The Banker</h2>
+    <div class="panel">
+      <div class="stats-grid">
+        <div class="stat-box"><div class="label">ETH Balance</div><div class="value" id="bk-eth" style="font-size:15px;">—</div></div>
+        <div class="stat-box"><div class="label">Spend per Buyback</div><div class="value" id="bk-spend" style="font-size:15px;">—</div></div>
+        <div class="stat-box"><div class="label">Next Buyback</div><div class="value" id="bk-next" style="font-size:15px;">—</div></div>
+        <div class="stat-box"><div class="label">Status</div><div class="value" id="bk-status" style="font-size:14px;">—</div></div>
+      </div>
+      <p class="panel-note">The Banker (RootedBuyback) spends its ETH to buy $ROOTED on Uniswap and burn it, at most once per cooldown. "Status" comes from a live dry run of the buyback, so it shows what would really happen if someone triggered it right now.</p>
+      <div id="bk-reason" class="warn-note" style="display:none;"></div>
+      <div id="bk-trigger-row" class="mint-row" style="display:none; margin-top:16px;">
+        <button id="bk-trigger-btn" class="btn-gold">Trigger Buyback</button>
+        <span style="color:var(--text-dim); font-size:12px;">Anyone can do this. You pay only the network fee; the Banker spends its own ETH.</span>
       </div>
     </div>
   </section>
@@ -342,7 +384,33 @@ const CONFIG = {
   // above, for scanning its Listed/ListingCancelled/Sale events. Set a bit
   // earlier than the real deploy block (safe -- just scans a few extra
   // blocks, never misses real events).
-  marketplaceDeployBlock: 49417500
+  marketplaceDeployBlock: 49417500,
+
+  // ---- Randomness Fund (Chainlink VRF) panel ----
+  // The Chainlink coordinator RootedSeed asks for random numbers
+  // (same as RootedSeed.s_vrfCoordinator()).
+  vrfCoordinatorAddress: "0xd5D517aBE5cF79B7e95eC98dB0f0277788aFF634",
+  // RootedSeed's LINK-paid subscription (same as RootedSeed.vrfSubscriptionId()).
+  // Kept as text because it's too big for a normal JavaScript number.
+  vrfSubscriptionId: "99799488626704730658672923648249695968951827175258420241551552797456280098852",
+  // RootedSeed's "gas lane" (same as RootedSeed.vrfKeyHash(); the 30 gwei lane).
+  // If the owner ever changes lanes with setVrfConfig(), update this too.
+  vrfKeyHash: "0xdc2f87677b01473c763cb0aee938ed3341512f6057324a584e5944e786144d70",
+  // LINK/ETH price feed the coordinator itself uses to price requests.
+  linkNativeFeed: "0xc5E65227fe3385B88468F9A01600017cDC9F3A12",
+  // The keeper refills the fund up to this many LINK (the all-time high).
+  vrfTargetLink: 8.39,
+
+  // ---- Banker panel ----
+  bankerAddress: "0x76f0aD04FF1e07f51dFE7DEA5b27b63ee15bEac0",
+
+  // ---- ROOTED keeper ----
+  // After a transaction that asks for randomness, the page pings this relay so
+  // the keeper checks the Randomness Fund right away instead of within the hour.
+  relayUrl: "https://rooted-check-now.rootedseed.workers.dev",
+  // RootedAutopilot contract (owner of RootedSeed, moves mint money to the
+  // Treasury). Leave empty until it's deployed; the page then simply skips it.
+  autopilotAddress: "0x11B47D5dFD2A4dCB6AF8cE38574a2D8cB98D235C"
 };
 
 const TIER_NAMES = ["Common","Uncommon","Notable","Rare","Epic","Legendary","Mythic","Genesis"];
@@ -371,6 +439,7 @@ const ROOTED_SEED_ABI = [
   "function balanceOf(address) view returns (uint256)",
   "function tierConfigs(uint256) view returns (uint256 maxSupply, uint256 minted, uint256 speedBps, uint256 startOffset, uint256 maxStage, uint256 yieldBps)",
   "function renounced() view returns (bool)",
+  "function owner() view returns (address)",
   "function priceReporter() view returns (address)",
   "function priceReportBounds() view returns (uint256 minAllowed, uint256 maxAllowed)",
   "function reportCooldownSeconds() view returns (uint256)",
@@ -399,9 +468,45 @@ const SEED_MARKETPLACE_ABI = [
   "event Sale(uint256 indexed tokenId, address indexed seller, address indexed buyer, uint256 priceWei, uint256 movingAverageWei)"
 ];
 
+// Chainlink VRF v2.5 coordinator -- only the read functions the Randomness
+// Fund panel needs.
+const VRF_COORDINATOR_ABI = [
+  "function getSubscription(uint256 subId) view returns (uint96 balance, uint96 nativeBalance, uint64 reqCount, address subOwner, address[] consumers)",
+  "function s_config() view returns (uint16 minimumRequestConfirmations, uint32 maxGasLimit, bool reentrancyLock, uint32 stalenessSeconds, uint32 gasAfterPaymentCalculation, uint32 fulfillmentFlatFeeNativePPM, uint32 fulfillmentFlatFeeLinkDiscountPPM, uint8 nativePremiumPercentage, uint8 linkPremiumPercentage)",
+  "function s_provingKeys(bytes32 keyHash) view returns (bool exists, uint64 maxGas)"
+];
+
+const PRICE_FEED_ABI = [
+  "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"
+];
+
+// RootedBuyback ("the Banker"). previewBuyback() is deliberately left out:
+// it ignores price impact in the small pool, so it can say "ready" when a
+// real buyback would fail. The panel dry-runs executeBuyback() instead.
+const BANKER_ABI = [
+  "function maxSpendPerCallWei() view returns (uint256)",
+  "function cooldownSeconds() view returns (uint256)",
+  "function lastBuybackTimestamp() view returns (uint256)",
+  "function executeBuyback()"
+];
+
+// Multicall3: a standard helper contract (same address on Base and most other
+// chains) that runs several reads in ONE request. The Randomness Fund and
+// Banker panels use it so each refresh costs the rate-limited free RPC one
+// call instead of four or five.
+const MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11";
+const MULTICALL3_ABI = [
+  "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[] returnData)",
+  "function getEthBalance(address addr) view returns (uint256 balance)"
+];
+
 let provider, signer, userAddress;
 let seedContract, seedContractRead, tokenContract;
 let marketContract, marketContractRead;
+// Read-only connection straight to Base (set up in initReadOnly). The
+// Randomness Fund and Banker panels always read through this, never through
+// the wallet, so they stay correct even if the wallet is on another network.
+let readProvider;
 // Populated by loadMyCollection() (skips pendingReveal Seeds, since an
 // unrevealed tier can't meaningfully be listed) -- drives the "List for
 // Sale" dropdown so people pick from their actual Seeds instead of typing
@@ -495,6 +600,10 @@ async function checkNetwork(currentChainId) {
 }
 
 async function refreshAll() {
+  // The Randomness Fund and Banker panels refresh on their own, without being
+  // waited for: they read through the slower free RPC, and nothing on the page
+  // depends on them, so they never hold up a button or a wallet action.
+  refreshAutomationPanels();
   await Promise.all([loadGlobalStats(), loadMyCollection(), loadPriceReporterPanel(), loadMarketplace()]);
 }
 
@@ -691,26 +800,56 @@ document.getElementById("mkt-list-btn").onclick = async () => {
 };
 
 // ---------------------------------------------------------------------
-// Public RPC providers (including Base's own https://mainnet.base.org)
-// commonly cap eth_getLogs at a 10,000-block range per call. Scanning from
-// a fixed deployBlock straight to "latest" works at first, but the range
-// only grows over time -- it WILL exceed that cap eventually even with zero
-// trading activity, just from blocks passing. This chunks any queryFilter
-// call into <=9,500-block windows (comfortably under the 10,000 cap) and
-// stitches the results back together. Chunks are fetched sequentially
-// (not in parallel) deliberately -- firing many chunk requests at once
-// risks tripping the same free RPC's rate limiting that caused the
-// "missing revert data" flakiness seen elsewhere on this page.
+// Public RPC providers cap how many blocks one eth_getLogs call may cover.
+// Base's own https://mainnet.base.org now allows only 2,000 blocks per call
+// (it used to be 10,000). Scanning from a fixed deployBlock straight to
+// "latest" works at first, but the range only grows over time -- it WILL
+// exceed that cap eventually even with zero trading activity, just from
+// blocks passing. This chunks any queryFilter call into <=1,999-block
+// windows (just under the 2,000 cap) and stitches the results back
+// together. Chunks are fetched sequentially (not in parallel) deliberately
+// -- firing many chunk requests at once risks tripping the same free RPC's
+// rate limiting that caused the "missing revert data" flakiness seen
+// elsewhere on this page. Each chunk gets its own retry, so one hiccup
+// doesn't throw away a long scan and start it over.
+//
+// A full scan is now 1,000+ calls (a few minutes), so results are kept for
+// the rest of the visit: the next scan of the same events (e.g. the refresh
+// right after a mint) only fetches the blocks added since last time. Only
+// one scan of the same events runs at a time: a second request waits for
+// the running one and then fetches just the blocks it didn't cover, instead
+// of starting another full scan.
 // ---------------------------------------------------------------------
-async function queryFilterChunked(contract, filter, fromBlock, chunkSize = 9500) {
+const scannedEvents = new Map(); // what's been scanned so far: { scannedTo, events }
+const latestScans = new Map();   // the newest scan (running or finished) of each set of events
+// The newest blocks are fetched again on the next scan, in case the RPC node
+// that answered getLogs was a little behind the one that gave the block
+// number (some nodes then return an empty list instead of an error).
+const RESCAN_BLOCKS = 30;
+
+async function queryFilterChunked(contract, filter, fromBlock, chunkSize = 1999) {
+  const cacheKey = [await contract.getAddress(), JSON.stringify(await filter.getTopicFilter()), fromBlock].join("|");
+  const previousScan = latestScans.get(cacheKey) || Promise.resolve();
+  const scan = previousScan.catch(() => {})
+    .then(() => scanNewBlocks(contract, filter, cacheKey, fromBlock, chunkSize));
+  latestScans.set(cacheKey, scan);
+  return scan;
+}
+
+async function scanNewBlocks(contract, filter, cacheKey, fromBlock, chunkSize) {
   const provider = contract.runner.provider ?? contract.runner;
   const currentBlock = await provider.getBlockNumber();
-  let allEvents = [];
-  for (let start = fromBlock; start <= currentBlock; start += chunkSize) {
+  const cached = scannedEvents.get(cacheKey);
+  const scanFrom = cached ? cached.scannedTo + 1 : fromBlock;
+  let allEvents = cached ? cached.events.slice() : [];
+  for (let start = scanFrom; start <= currentBlock; start += chunkSize) {
     const end = Math.min(start + chunkSize - 1, currentBlock);
-    const events = await contract.queryFilter(filter, start, end);
+    const events = await withRetry(() => contract.queryFilter(filter, start, end));
     allEvents = allEvents.concat(events);
   }
+  // Keep everything except the newest RESCAN_BLOCKS blocks; those get fetched again next time.
+  const settledTo = Math.max(scanFrom - 1, currentBlock - RESCAN_BLOCKS);
+  scannedEvents.set(cacheKey, { scannedTo: settledTo, events: allEvents.filter(e => e.blockNumber <= settledTo) });
   return allEvents;
 }
 
@@ -812,6 +951,335 @@ document.getElementById("pr-submit-btn").onclick = async () => {
   }
 };
 
+// =====================================================================
+// Randomness Fund + Banker panels, and the "check now" ping to the ROOTED
+// keeper. Every read here goes straight to Base through readProvider.
+// =====================================================================
+
+// log() renders HTML (for its "view tx" link), so text that came from the
+// chain or an RPC is escaped before it goes into the Activity Log.
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// Sets a stat box's text and colour (status-ok / status-warn / status-bad).
+function setStatValue(id, text, statusClass) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = "value" + (statusClass ? " " + statusClass : "");
+}
+
+// Shows an 18-decimal amount (LINK or ETH) with at most `maxDecimals` decimals.
+function formatAmount(amountWei, maxDecimals) {
+  return Number(ethers.formatEther(amountWei)).toLocaleString(undefined,
+    { minimumFractionDigits: 2, maximumFractionDigits: maxDecimals });
+}
+
+// How much LINK (in its smallest unit, 1e-18 LINK) a Chainlink node sets
+// aside from the fund before it will answer ONE randomness request. It's the
+// most that request could cost at the gas lane's maximum gas price -- far
+// more than a reveal really costs (well under 0.001 LINK) -- but if the fund
+// holds less than this, the node waits instead of answering. Same formula
+// the ROOTED keeper uses:
+//   (100 + premium %) / 100 x lane max gas price
+//     x (gas after payment + 210,000) x 1e18 / LINK price in wei
+function vrfLinkPerRequest(coordinatorConfig, laneMaxGasWei, linkPriceWei) {
+  if (laneMaxGasWei <= 0n || linkPriceWei <= 0n) return 0n;
+  return ((100n + BigInt(coordinatorConfig.linkPremiumPercentage)) * BigInt(laneMaxGasWei) *
+    (BigInt(coordinatorConfig.gasAfterPaymentCalculation) + 210000n) * 10n ** 18n) /
+    (100n * BigInt(linkPriceWei));
+}
+
+// Runs several reads in ONE request through Multicall3. `calls` is a list of
+// [contract, "functionName", [args]]; the answer is each function's result,
+// the same as calling them one by one. If any read fails, the whole request
+// fails (and the caller's retry takes over).
+async function readTogether(calls) {
+  const multicall = new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3_ABI, readProvider);
+  const answers = await multicall.aggregate3(calls.map(([contract, fn, args = []]) => ({
+    target: contract.target,
+    allowFailure: false,
+    callData: contract.interface.encodeFunctionData(fn, args)
+  })));
+  return answers.map((answer, i) => {
+    const [contract, fn] = calls[i];
+    const result = contract.interface.decodeFunctionResult(fn, answer.returnData);
+    return result.length === 1 ? result[0] : result;
+  });
+}
+
+// For readTogether(): reads the ETH balance of any address.
+function ethBalanceRead(address) {
+  return [new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3_ABI), "getEthBalance", [address]];
+}
+
+// The last successful fund reading, { fund, readAt }. The check before a
+// mint reuses it while it's recent (see vrfFundCoversNextReveal).
+let lastVrfFund = null;
+
+// Reads the fund (one request) and works out what the panel shows.
+async function readVrfFund() {
+  if (!readProvider) throw new Error("not connected to Base yet");
+  const coordinator = new ethers.Contract(CONFIG.vrfCoordinatorAddress, VRF_COORDINATOR_ABI);
+  const feed = new ethers.Contract(CONFIG.linkNativeFeed, PRICE_FEED_ABI);
+  const [sub, coordinatorConfig, lane, round] = await readTogether([
+    [coordinator, "getSubscription", [CONFIG.vrfSubscriptionId]],
+    [coordinator, "s_config"],
+    [coordinator, "s_provingKeys", [CONFIG.vrfKeyHash]],
+    [feed, "latestRoundData"]
+  ]);
+  const perRequest = vrfLinkPerRequest(coordinatorConfig, lane.maxGas, round.answer);
+  // The keeper refills to the all-time high (CONFIG.vrfTargetLink), or to
+  // three requests' worth if LINK's price ever drops far enough that that's more.
+  const configuredTarget = ethers.parseEther(String(CONFIG.vrfTargetLink));
+  const target = 3n * perRequest > configuredTarget ? 3n * perRequest : configuredTarget;
+  const fund = { balance: sub.balance, reqCount: sub.reqCount, perRequest, target };
+  lastVrfFund = { fund, readAt: Date.now() };
+  return fund;
+}
+
+// Healthy: at the target (within 0.05 LINK).
+// Refill scheduled: below target but still covers a request; the keeper
+//   tops it up on its next run.
+// LOW: can't cover even one request, so new reveals wait for the refill.
+function vrfFundStatus(fund) {
+  if (fund.balance < fund.perRequest) return { text: "LOW — reveals may wait", cls: "status-bad", low: true };
+  if (fund.balance < fund.target - ethers.parseEther("0.05")) return { text: "Refill scheduled", cls: "status-warn", low: false };
+  return { text: "Healthy", cls: "status-ok", low: false };
+}
+
+// `background` = the every-few-minutes refresh: failures then go to the
+// console only, so the Activity Log doesn't fill up with repeats.
+async function loadRandomnessFund(background = false) {
+  if (!readProvider) return;
+  try {
+    const fund = await withRetry(readVrfFund);
+    const status = vrfFundStatus(fund);
+    document.getElementById("vrf-link").textContent =
+      formatAmount(fund.balance, 2) + " / " + formatAmount(fund.target, 2) + " target";
+    document.getElementById("vrf-capacity").textContent =
+      fund.perRequest > 0n ? (fund.balance / fund.perRequest).toString() : "—";
+    document.getElementById("vrf-served").textContent = fund.reqCount.toString();
+    setStatValue("vrf-status", status.text, status.cls);
+    document.getElementById("vrf-mint-warning").style.display = status.low ? "block" : "none";
+  } catch (err) {
+    console.error(err);
+    setStatValue("vrf-status", "Couldn't check right now", "");
+    if (!background) log("Couldn't load the Randomness Fund right now. The page will try again in a few minutes.");
+  }
+  await loadSweepNote();
+}
+
+// Once the RootedAutopilot contract is deployed (CONFIG.autopilotAddress),
+// show how much mint money is sitting in RootedSeed waiting for the keeper
+// to move it to the Treasury. Hidden until then.
+async function loadSweepNote() {
+  const noteEl = document.getElementById("vrf-sweep-note");
+  if (!CONFIG.autopilotAddress || !ethers.isAddress(CONFIG.autopilotAddress)) {
+    noteEl.style.display = "none";
+    return;
+  }
+  try {
+    const seedRead = new ethers.Contract(CONFIG.rootedSeedAddress, ROOTED_SEED_ABI);
+    const [waitingWei, seedOwner] = await withRetry(() => readTogether([
+      ethBalanceRead(CONFIG.rootedSeedAddress),
+      [seedRead, "owner"]
+    ]));
+    const autopilotInCharge = seedOwner.toLowerCase() === CONFIG.autopilotAddress.toLowerCase();
+    noteEl.textContent = "Mint money waiting to move to Treasury: " + formatAmount(waitingWei, 6) + " ETH " +
+      (autopilotInCharge ? "(moved automatically)" : "(moves automatically once the Autopilot setup is finished)");
+    noteEl.style.display = "block";
+  } catch (err) {
+    console.error(err);
+    noteEl.style.display = "none";
+  }
+}
+
+// Called right before a mint: can the fund pay for this mint's reveal? (One
+// mint transaction is one randomness request, whatever the quantity.)
+// Returns false only when we KNOW the fund is low. A reading from the last
+// two minutes is reused (a reveal uses well under 0.001 LINK, so the fund
+// can't go from fine to low that fast). Otherwise it reads the fund again;
+// if that fails or takes more than two seconds it returns true, so a flaky
+// RPC never stops or slows anyone minting.
+async function vrfFundCoversNextReveal() {
+  try {
+    const recent = lastVrfFund && Date.now() - lastVrfFund.readAt < 2 * 60 * 1000;
+    const fund = recent ? lastVrfFund.fund : await Promise.race([
+      readVrfFund(),
+      new Promise((resolve, reject) => setTimeout(() => reject(new Error("timed out")), 2000))
+    ]);
+    const low = vrfFundStatus(fund).low;
+    document.getElementById("vrf-mint-warning").style.display = low ? "block" : "none";
+    return !low;
+  } catch (err) {
+    console.warn("Skipped the Randomness Fund check before minting:", err);
+    return true;
+  }
+}
+
+// After a transaction that asks Chainlink for randomness (mint, harvest,
+// maturity roll), ask the ROOTED keeper to check the Randomness Fund now
+// instead of on its next hourly run. Fire-and-forget: it never delays or
+// fails what the user is doing; problems only go to the console.
+function pingKeeper(txHash) {
+  try {
+    if (!CONFIG.relayUrl || !txHash) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    fetch(CONFIG.relayUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tx: txHash }),
+      credentials: "omit",
+      signal: controller.signal
+    })
+      .then(res => {
+        if (res.ok) log("Asked the ROOTED keeper to double-check the randomness fund.");
+        else console.warn("Keeper relay answered with status " + res.status);
+      })
+      .catch(err => console.warn("Couldn't reach the keeper relay:", err))
+      .finally(() => clearTimeout(timer));
+  } catch (err) {
+    console.warn("Couldn't reach the keeper relay:", err);
+  }
+}
+
+// A real "no" from the contract comes back with a reason, e.g. "Too little
+// received". When the free RPC is rate-limiting instead, ethers reports the
+// same error type (CALL_EXCEPTION) but with no reason and "missing revert
+// data" -- that means "couldn't ask", not "blocked".
+function isRealRevert(err) {
+  if (!err || err.code !== "CALL_EXCEPTION") return false;
+  if (err.reason) return true;
+  return typeof err.data === "string" && err.data.length > 2; // reverted with an unnamed error
+}
+
+// Dry-runs executeBuyback() (a free read -- no transaction, no gas) and
+// reports what would happen: { ok: true }, { ok: false, reason }, or
+// { unknown: true } when the RPC couldn't be reached. Only RPC hiccups are
+// retried; a real "no" is final.
+async function simulateBuyback(banker) {
+  try {
+    return await withRetry(async () => {
+      try {
+        await banker.executeBuyback.staticCall();
+        return { ok: true };
+      } catch (err) {
+        if (isRealRevert(err)) return { ok: false, reason: err.reason || "unknown reason" };
+        throw err;
+      }
+    });
+  } catch (err) {
+    console.warn("Couldn't dry-run the buyback:", err);
+    return { ok: false, unknown: true };
+  }
+}
+
+// Short labels and plain-English explanations for the reasons
+// executeBuyback() can refuse.
+const BANKER_BLOCK_REASONS = [
+  { match: /Too little received/i, short: "Too little received",
+    help: "The trading pool is too small for the Banker's current spend per buyback, so the swap would return less than its safety minimum. Nothing is spent; the ETH stays in the Banker." },
+  { match: /no ETH available/i, short: "No ETH to spend",
+    help: "The Banker has no ETH to spend right now." },
+  { match: /drift band/i, short: "Price outside safe range",
+    help: "The pool price has moved further from the last buyback price than the Banker allows, so it waits rather than risk buying at a manipulated price. The allowed range widens the longer it goes without a buyback." },
+  { match: /fee-exempt/i, short: "Not set up yet",
+    help: "The Banker must be exempt from the $ROOTED transfer tax before it can buy." },
+  { match: /after transfer tax/i, short: "Too little after tax",
+    help: "After the $ROOTED transfer tax, the swap would return less than the Banker's safety minimum." }
+];
+
+function bankerStatus(sim) {
+  if (sim.unknown) return { text: "Couldn't check right now", cls: "" };
+  if (sim.ok) return { text: "Ready", cls: "status-ok", ready: true };
+  if (/cooldown not elapsed/i.test(sim.reason)) return { text: "Waiting for cooldown", cls: "status-warn" };
+  const known = BANKER_BLOCK_REASONS.find(r => r.match.test(sim.reason));
+  let short = known ? known.short : sim.reason.replace(/^RootedBuyback:\s*/, "");
+  if (short.length > 60) short = short.slice(0, 57) + "…";
+  return { text: "Blocked: " + short, cls: "status-bad", help: known ? known.help : "" };
+}
+
+async function loadBankerPanel(background = false) {
+  if (!readProvider) return;
+  const banker = new ethers.Contract(CONFIG.bankerAddress, BANKER_ABI, readProvider);
+  try {
+    await withRetry(async () => {
+      const [balanceWei, maxSpendWei, cooldown, lastBuyback] = await readTogether([
+        ethBalanceRead(CONFIG.bankerAddress),
+        [banker, "maxSpendPerCallWei"],
+        [banker, "cooldownSeconds"],
+        [banker, "lastBuybackTimestamp"]
+      ]);
+      document.getElementById("bk-eth").textContent = formatAmount(balanceWei, 6) + " ETH";
+      document.getElementById("bk-spend").textContent = formatAmount(maxSpendWei, 6) + " ETH";
+      const nextAllowedAt = Number(lastBuyback) + Number(cooldown);
+      const secondsLeft = nextAllowedAt - Math.floor(Date.now() / 1000);
+      const nextEl = document.getElementById("bk-next");
+      nextEl.textContent = secondsLeft <= 0 ? "Now" : "in " + formatDuration(secondsLeft);
+      nextEl.title = new Date(nextAllowedAt * 1000).toLocaleString();
+    });
+  } catch (err) {
+    console.error(err);
+    if (!background) log("Couldn't load the Banker panel right now. The page will try again in a few minutes.");
+  }
+
+  // Status comes from a real dry run -- never from previewBuyback().
+  const status = bankerStatus(await simulateBuyback(banker));
+  setStatValue("bk-status", status.text, status.cls);
+  const reasonEl = document.getElementById("bk-reason");
+  reasonEl.textContent = status.help || "";
+  reasonEl.style.display = status.help ? "block" : "none";
+  document.getElementById("bk-trigger-row").style.display = userAddress && status.ready ? "flex" : "none";
+}
+
+// Anyone can trigger a buyback; it only shows while the dry run says Ready.
+document.getElementById("bk-trigger-btn").onclick = async () => {
+  if (!signer) { alert("Connect your wallet first."); return; }
+  const btn = document.getElementById("bk-trigger-btn");
+  btn.disabled = true;
+  try {
+    const banker = new ethers.Contract(CONFIG.bankerAddress, BANKER_ABI, signer);
+    const tx = await banker.executeBuyback();
+    log("Triggering a Banker buyback...", tx.hash);
+    await tx.wait();
+    log("Buyback confirmed — the $ROOTED it bought has been burned.");
+  } catch (err) {
+    console.error(err);
+    log("Buyback failed: " + escapeHtml(err.reason || err.message || err));
+  } finally {
+    btn.disabled = false;
+    await loadBankerPanel();
+  }
+};
+
+document.getElementById("vrf-sub-link").href = "https://vrf.chain.link/base/" + CONFIG.vrfSubscriptionId;
+
+// Loads both panels. If they're already loading (the first load, the
+// background refresh, or a refresh after a transaction), it doesn't start a
+// second copy: that would only add requests to the rate-limited free RPC.
+// `background` = quiet: failures go to the console, not the Activity Log.
+let automationPanelsBusy = false;
+async function refreshAutomationPanels(background = false) {
+  if (automationPanelsBusy) return;
+  automationPanelsBusy = true;
+  try {
+    await Promise.all([loadRandomnessFund(background), loadBankerPanel(background)]);
+  } finally {
+    automationPanelsBusy = false;
+  }
+}
+
+// Gentle background refresh of just these two panels: every five minutes
+// (the fund and the Banker change slowly), and only while the tab is visible.
+function startAutomationPanelsRefresh() {
+  setInterval(() => {
+    if (document.visibilityState === "visible") refreshAutomationPanels(true);
+  }, 5 * 60 * 1000);
+}
+
 async function loadGlobalStats() {
   try {
     await withRetry(async () => {
@@ -901,6 +1369,13 @@ document.getElementById("mint-btn").onclick = async () => {
   const qty = parseInt(document.getElementById("qty-input").value || "1", 10);
   btn.disabled = true;
   try {
+    // If the Randomness Fund can't pay for a reveal right now, say so before
+    // any money moves. (Never blocks minting if the check itself fails.)
+    if (!(await vrfFundCoversNextReveal()) &&
+        !confirm("Heads up: the Randomness Fund is low right now. Your Seed will mint, but its reveal may wait until the fund is refilled (that happens automatically).\n\nMint anyway?")) {
+      log("Mint cancelled. The Randomness Fund refills automatically, so you can try again a bit later.");
+      return;
+    }
     const priceWei = await seedContractRead.mintPriceWei();
     let tx;
     if (qty === 1) {
@@ -915,9 +1390,12 @@ document.getElementById("mint-btn").onclick = async () => {
       tx = await seedContract.mintBatch(qty, { value: priceWei * BigInt(qty) });
     }
     log(`Mint transaction submitted for ${qty} Seed(s)...`, tx.hash);
-    await tx.wait();
+    const receipt = await tx.wait();
     log("Mint confirmed! Your Seed's rarity will reveal shortly once the random number arrives.");
-    await refreshAll();
+    pingKeeper(receipt ? receipt.hash : tx.hash);
+    // Refresh without waiting: the mint is done, so the button is freed right
+    // away, and a slow or failed refresh can never show up as "Mint failed".
+    refreshAll();
   } catch (err) {
     console.error(err);
     log("Mint failed: " + (err.reason || err.message || err));
@@ -1085,8 +1563,9 @@ function attachCardListeners() {
       try {
         const tx = await seedContract.harvestGenesis(id);
         log(`Requesting harvest for Seed #${id}...`, tx.hash);
-        await tx.wait();
+        const receipt = await tx.wait();
         log(`Harvest requested for Seed #${id} — new Seed's tier will reveal shortly via VRF.`);
+        pingKeeper(receipt ? receipt.hash : tx.hash);
         await loadMyCollection();
       } catch (err) {
         log("Failed: " + (err.reason || err.message || err));
@@ -1101,8 +1580,9 @@ function attachCardListeners() {
       try {
         const tx = await seedContract.rollCommonMaturity(id);
         log(`Rolling maturity for Seed #${id}...`, tx.hash);
-        await tx.wait();
+        const receipt = await tx.wait();
         log(`Maturity roll requested for Seed #${id} — result will reveal shortly via VRF.`);
+        pingKeeper(receipt ? receipt.hash : tx.hash);
         await loadMyCollection();
       } catch (err) {
         log("Failed: " + (err.reason || err.message || err));
@@ -1122,12 +1602,21 @@ document.getElementById("connect-btn").onclick = connectWallet;
       log("Failed to load the ethers.js library from the CDN. Check your internet connection, or that nothing (an ad blocker, antivirus, or corporate firewall) is blocking cdnjs.cloudflare.com, then reload this page.");
       return;
     }
-    const readProvider = new ethers.JsonRpcProvider(CONFIG.rpcUrl);
+    // Two settings that keep the free RPC's rate limiting from breaking the page:
+    // - staticNetwork: we already know this is Base, so ethers skips the extra
+    //   "which chain is this?" call it would otherwise add to every request.
+    // - batchMaxCount 1: send each read as its own request. mainnet.base.org
+    //   rejects bundled (batched) reads far more often, and reports it in a
+    //   way ethers can't retry ("missing revert data"); single requests that
+    //   get rate limited are retried automatically after a short wait.
+    readProvider = new ethers.JsonRpcProvider(CONFIG.rpcUrl, CONFIG.chainId, { staticNetwork: true, batchMaxCount: 1 });
     seedContractRead = new ethers.Contract(CONFIG.rootedSeedAddress, ROOTED_SEED_ABI, readProvider);
     if (marketplaceConfigured()) {
       marketContractRead = new ethers.Contract(CONFIG.marketplaceAddress, SEED_MARKETPLACE_ABI, readProvider);
     }
-    await Promise.all([loadGlobalStats(), loadPriceReporterPanel(), loadMarketplace()]);
+    startAutomationPanelsRefresh();
+    await Promise.all([loadGlobalStats(), loadPriceReporterPanel(), loadMarketplace(),
+      refreshAutomationPanels()]);
   } catch (err) {
     console.error(err);
     log("Startup error: " + (err.message || err) + ". Try opening this file from a local web server (e.g. run \"python -m http.server\" in this folder, then visit http://localhost:8000/rooted-app.html) instead of double-clicking it, since some browsers restrict network requests from file:// pages.");
